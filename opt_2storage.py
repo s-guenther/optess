@@ -16,7 +16,7 @@ import time
 from opt_generic import std_values, alt_values
 
 
-def make_model(lower, upper, efficiency=1, disch=1e-6, maxpwr_base=0.6,
+def make_model(lower, upper, efficiency=0.99, disch=1e-2, maxpwr_base=0.6,
                maxpwr_peak=1.4, dtime=1):
     """Builds a pyomo model, taking lower and upper as input and minimizes
     storage dimension, for 2 storage system"""
@@ -49,6 +49,23 @@ def make_model(lower, upper, efficiency=1, disch=1e-6, maxpwr_base=0.6,
     # create variable pwridealbase and pwridealpeak
     mm.pwridealbase = pe.Var(mm.ind)
     mm.pwridealpeak = pe.Var(mm.ind)
+
+    # create variable pwrinter for inter-storage power flow w/o losses
+    mm.pwrinter = pe.Var(mm.ind)  # set this to zero to prevent reloading
+    # mm.pwrinter = pe.Var(mm.ind, bounds=(0, 0))
+
+    # constraint that pwrinter + pwrinout stays within limits
+    def interconstraintbaserule(model, ii):
+        expr = model.pwrinter[ii] + model.pwrplusbase[ii] + \
+               model.pwrminusbase[ii]
+        return -maxpwr_base/efficiency, expr, maxpwr_base*efficiency
+    mm.interbase = pe.Constraint(mm.ind, rule=interconstraintbaserule)
+
+    def interconstraintpeakrule(model, ii):
+        expr = -model.pwrinter[ii] + model.pwrpluspeak[ii] + \
+               model.pwrminuspeak[ii]
+        return -maxpwr_peak/efficiency, expr, maxpwr_peak*efficiency
+    mm.interpeak = pe.Constraint(mm.ind, rule=interconstraintpeakrule)
 
     # create variable energy base and peak with bounds as constraint (bounded
     # by other variable 'energycap' - energy capacity)
@@ -100,22 +117,24 @@ def make_model(lower, upper, efficiency=1, disch=1e-6, maxpwr_base=0.6,
 
     # constraint self discharge and efficiency losses
     def lossesbase(model, ii):
+        inter = model.pwrinter[ii]
         eff_losses = (model.pwrplusbase[ii]*efficiency +
                       model.pwrminusbase[ii]/efficiency)
         if ii is 0:
             disch_losses = -model.startenrgybase*disch
         else:
             disch_losses = -model.enrgybase[ii-1]*disch
-        return model.pwridealbase[ii] == eff_losses + disch_losses
+        return model.pwridealbase[ii] == inter + eff_losses + disch_losses
 
     def lossespeak(model, ii):
+        inter = -model.pwrinter[ii]
         eff_losses = (model.pwrpluspeak[ii]*efficiency +
                       model.pwrminuspeak[ii]/efficiency)
         if ii is 0:
             disch_losses = -model.startenrgypeak*disch
         else:
             disch_losses = -model.enrgypeak[ii-1]*disch
-        return model.pwridealpeak[ii] == eff_losses + disch_losses
+        return model.pwridealpeak[ii] == inter + eff_losses + disch_losses
 
     mm.pwrafterlossesbase = pe.Constraint(mm.ind, rule=lossesbase)
     mm.pwrafterlossespeak = pe.Constraint(mm.ind, rule=lossespeak)
@@ -154,9 +173,9 @@ def make_model(lower, upper, efficiency=1, disch=1e-6, maxpwr_base=0.6,
                                  for ii in mm.ind)
     mm.obj = pe.Objective(expr=(objective_expr +
                                 0*quadratic_expr +
-                                multiplier2*(1e-1*penalty_expr_base +
+                                multiplier2*(0*penalty_expr_base +
                                              0*quadratic_penalty_base +
-                                             1e-1*penalty_expr_peak)))
+                                             0*penalty_expr_peak)))
 
     return mm
 
