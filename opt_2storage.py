@@ -57,26 +57,25 @@ def make_model(lower, upper, efficiency=1, disch=1e-10, maxpwr_base=1,
     mm.pwridealpeak = pe.Var(mm.ind)
 
     # create variable pwrinter for inter-storage power flow w/o losses
-    mm.pwrinter = pe.Var(mm.ind)  # set this to zero to prevent reloading
-
+    mm.pwrinter = pe.Var(mm.ind, bounds=(-min(maxpwr_base, maxpwr_peak),
+                                         min(maxpwr_base, maxpwr_peak)))
+    # set this to zero to prevent reloading
     # mm.pwrinter = pe.Var(mm.ind, bounds=(0, 0))
 
-    # constraint that pwrinter + pwrinout stays within limits
-    def interconstraintbaserule(model, ii):
-        expr = model.pwrinter[ii] + \
-               model.pwrplusbase[ii] * efficiency + \
-               model.pwrminusbase[ii] / efficiency
-        return -maxpwr_base / efficiency, expr, maxpwr_base * efficiency
+    def interandbasewithinlimits(model, ii):
+        return (-maxpwr_base,
+                model.pwrbase[ii] + model.pwrinter[ii],
+                maxpwr_base)
 
-    mm.interbase = pe.Constraint(mm.ind, rule=interconstraintbaserule)
+    def interandpeakwithinlimits(model, ii):
+        return (-maxpwr_peak,
+                model.pwrpeak[ii] - model.pwrinter[ii],
+                maxpwr_peak)
 
-    def interconstraintpeakrule(model, ii):
-        expr = -model.pwrinter[ii] + \
-               model.pwrpluspeak[ii] * efficiency + \
-               model.pwrminuspeak[ii] / efficiency
-        return -maxpwr_peak / efficiency, expr, maxpwr_peak * efficiency
-
-    mm.interpeak = pe.Constraint(mm.ind, rule=interconstraintpeakrule)
+    mm.baseinterwithinbnds = pe.Constraint(mm.ind,
+                                           rule=interandbasewithinlimits)
+    mm.peakinterwithinbnds = pe.Constraint(mm.ind,
+                                           rule=interandpeakwithinlimits)
 
     # create variable energy base and peak with bounds as constraint (bounded
     # by other variable 'energycap' - energy capacity)
@@ -116,36 +115,34 @@ def make_model(lower, upper, efficiency=1, disch=1e-10, maxpwr_base=1,
 
     # constraint split power in positive and negative part
     def powerequalbase(model, ii):
-        return model.pwrbase[ii] == model.pwrplusbase[ii] + \
-               model.pwrminusbase[ii]
+        return model.pwrbase[ii] == \
+               model.pwrplusbase[ii] + model.pwrminusbase[ii]
 
     def powerequalpeak(model, ii):
-        return model.pwrpeak[ii] == model.pwrpluspeak[ii] + \
-               model.pwrminuspeak[ii]
+        return model.pwrpeak[ii] == \
+               model.pwrpluspeak[ii] + model.pwrminuspeak[ii]
 
     mm.pwrequalbase = pe.Constraint(mm.ind, rule=powerequalbase)
     mm.pwrequalpeak = pe.Constraint(mm.ind, rule=powerequalpeak)
 
     # constraint self discharge and efficiency losses
     def lossesbase(model, ii):
-        inter = model.pwrinter[ii]
         eff_losses = (model.pwrplusbase[ii] * efficiency +
                       model.pwrminusbase[ii] / efficiency)
         if ii is 0:
             disch_losses = -model.startenrgybase * disch
         else:
             disch_losses = -model.enrgybase[ii - 1] * disch
-        return model.pwridealbase[ii] == inter + eff_losses + disch_losses
+        return model.pwridealbase[ii] == eff_losses + disch_losses
 
     def lossespeak(model, ii):
-        inter = -model.pwrinter[ii]
         eff_losses = (model.pwrpluspeak[ii] * efficiency +
                       model.pwrminuspeak[ii] / efficiency)
         if ii is 0:
             disch_losses = -model.startenrgypeak * disch
         else:
             disch_losses = -model.enrgypeak[ii - 1] * disch
-        return model.pwridealpeak[ii] == inter + eff_losses + disch_losses
+        return model.pwridealpeak[ii] == eff_losses + disch_losses
 
     mm.pwrafterlossesbase = pe.Constraint(mm.ind, rule=lossesbase)
     mm.pwrafterlossespeak = pe.Constraint(mm.ind, rule=lossespeak)
@@ -153,19 +150,19 @@ def make_model(lower, upper, efficiency=1, disch=1e-10, maxpwr_base=1,
     # constraint integrate energy - connect power and energy
     def integrate_powerbase(model, ii):
         if ii is 0:
-            return model.enrgybase[ii] == model.startenrgybase + \
-                   (model.pwrinter[ii] + model.pwridealbase[ii]) * dtime
+            lastenergy = model.startenrgybase
         else:
-            return model.enrgybase[ii] == model.enrgybase[ii - 1] + \
-                   (model.pwrinter[ii] + model.pwridealbase[ii]) * dtime
+            lastenergy = model.enrgybase[ii - 1]
+        return model.enrgybase[ii] == lastenergy + \
+               (model.pwrinter[ii] + model.pwridealbase[ii]) * dtime
 
     def integrate_powerpeak(model, ii):
         if ii is 0:
-            return model.enrgypeak[ii] == model.startenrgypeak + \
-                   (-model.pwrinter[ii] + model.pwridealpeak[ii]) * dtime
+            lastenergy = model.startenrgypeak
         else:
-            return model.enrgypeak[ii] == model.enrgypeak[ii - 1] + \
-                   (-model.pwrinter[ii] + model.pwridealpeak[ii]) * dtime
+            lastenergy = model.enrgypeak[ii - 1]
+        return model.enrgypeak[ii] == lastenergy + \
+               (-model.pwrinter[ii] + model.pwridealpeak[ii]) * dtime
 
     mm.intpwrbase = pe.Constraint(mm.ind, rule=integrate_powerbase)
     mm.intpwrpeak = pe.Constraint(mm.ind, rule=integrate_powerpeak)
@@ -304,11 +301,17 @@ def add_results_to_plot(result, fig=100):
 
     plt.figure(fig)
     plt.step(xvals, res['idealboth'], color='b')
-    plt.step(xvals, res['inter'], color='k')
-    plt.stackplot(xvals, res['idealbaseplus'], res['idealpeakplus'],
-                  step='pre', colors=('g', 'r'))
-    plt.stackplot(xvals, res['idealbaseminus'], res['idealpeakminus'],
-                  step='pre', colors=('g', 'r'))
+    # plt.step(xvals, res['inter'], color='k')
+    plt.stackplot(xvals,
+                  res['idealbaseplus'], res['idealpeakplus'],
+                  res['interbaseplus'], res['interpeakplus'],
+                  step='pre',
+                  colors=('green', 'red', 'limegreen', 'orangered'))
+    plt.stackplot(xvals,
+                  res['idealbaseminus'], res['idealpeakminus'],
+                  res['interbaseminus'], res['interpeakminus'],
+                  step='pre',
+                  colors=('green', 'red', 'limegreen', 'orangered'))
 
     plt.figure(fig+1)
     plt.clf()
@@ -332,7 +335,7 @@ def main(profile=None):
     lwr, upr, xx = profile()
     data = dict(lower=lwr,
                 upper=upr,
-                efficiency=0.7,
+                efficiency=0.99,
                 disch=1e-3,
                 maxpwr_base=1,
                 maxpwr_peak=1,
@@ -351,7 +354,7 @@ def main(profile=None):
               'PROVEN TO BE INFEASIBLY.\n')
 
     result = extract_results(model, data['xvals'])
-    if not is_valid_result(result):
+    if not is_valid_result(result, rel_tol=1e-1):
         print('\nCAUTION: RESULT SEEMS TO BE INVALID\n')
 
     print('{:%H:%M:%S}: Starting Post Processing...'.format(datetime.now()))
@@ -381,4 +384,4 @@ if __name__ == '__main__':
     starttime = time.time()
     MODEL, RES = main()
     # make_hybridcurve()
-    print('Eleapsed time is {:1.4f}s'.format(time.time() - starttime))
+    print('Elapsed time is {:1.4f}s'.format(time.time() - starttime))
