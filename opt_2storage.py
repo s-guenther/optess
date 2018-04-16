@@ -306,12 +306,12 @@ def add_results_to_plot(result, fig=100):
                   res['idealbaseplus'], res['idealpeakplus'],
                   res['interbaseplus'], res['interpeakplus'],
                   step='pre',
-                  colors=('green', 'red', 'limegreen', 'orangered'))
+                  colors=('green', 'red', 'chartreuse', 'coral'))
     plt.stackplot(xvals,
                   res['idealbaseminus'], res['idealpeakminus'],
                   res['interbaseminus'], res['interpeakminus'],
                   step='pre',
-                  colors=('green', 'red', 'limegreen', 'orangered'))
+                  colors=('green', 'red', 'chartreuse', 'coral'))
 
     plt.figure(fig+1)
     plt.clf()
