@@ -13,6 +13,12 @@ class Objective(Enum):
     power = 1
     energy = 2
 
+
+class Strategy(Enum):
+    inter = 1
+    nointer = 2
+
+
 # TODO implement type checking
 
 # # protected property variables
