@@ -4,7 +4,7 @@
 import pyomo.environ as pe
 
 import buildmodel as _buildmodel
-from optimstorage import Signal, Storage, Objective, Strategy
+from optimstorage import Signal, Storage, Objective, Strategy, Results, Solver
 
 
 class DataIsNotCompletelyDefinedError(Exception):
@@ -23,65 +23,184 @@ class OptimModel:
         objective   - 'power' or 'energy'
     When called, it builds a pyomo model object from the defined data.
     """
-    def __init__(self, signal=None, base=None, peak=None, objective=None,
-                 strategy=None, name='Hybrid Storage Optimization'):
-        self.signal = Signal(signal)
-        self.base = Storage(base)
-        self.peak = Storage(peak)
-        self.objective = Objective(objective.name)
-        self.strategy = Strategy(strategy.name)
-        self.name = str(name)
+    def __init__(self, signal=None, base=None, peak=None, objective='power',
+                 strategy='inter', solver='gurobi',
+                 name='Hybrid Storage Optimization', info=None):
+        self._signal = None
+        self._base = None
+        self._peak = None
+
+        self._objective = None
+        self._strategy = None
+        self._solver = None
+        self._name = None
+
         self._model = None
         self._results = None
 
-    def __call__(self):
-        """Create a Pyomo Model from the data if data is complete,
-        else through an error message"""
+        if signal is not None:
+            self.signal = signal
+        if base is not None:
+            self.base = base
+        if peak is not None:
+            self.peak = peak
+
+        self.objective = objective
+        self.strategy = strategy
+        self.solver = solver
+        self.name = name
+
+        # info is the only variable which is not typechecked and can be
+        # freely modified. It can be used to store arbitrary userdata
+        self.info = info
+
+    # The following properties reset the model and results if set
+    @property
+    def signal(self):
+        return self._signal
+
+    # noinspection PyArgumentList
+    @signal.setter
+    def signal(self, val):
+        self._signal = Signal(val)
+        self._modified()
+
+    @property
+    def base(self):
+        return self._base
+
+    @base.setter
+    def base(self, val):
+        # noinspection PyArgumentList
+        self._base = Storage(val)
+        self._modified()
+
+    @property
+    def peak(self):
+        return self._peak
+
+    @peak.setter
+    def peak(self, val):
+        # noinspection PyArgumentList
+        self._peak = Storage(val)
+        self._modified()
+
+    @property
+    def objective(self):
+        return self._objective
+
+    @objective.setter
+    def objective(self, val):
+        self._objective = Objective(val)
+        self._modified()
+
+    @property
+    def strategy(self):
+        return self._strategy
+
+    @strategy.setter
+    def strategy(self, val):
+        self._strategy = Strategy(val)
+        self._modified()
+
+    @property
+    def solver(self):
+        return self._solver
+
+    @solver.setter
+    def solver(self, val):
+        self._solver = Solver(val)
+        self._modified()
+
+    # name is only typechecked, but will not reset the results
+    @property
+    def name(self):
+        return self._name
+
+    @name.setter
+    def name(self, val):
+        self._name = str(val)
+
+    # The following properties check if the variable is available, if not,
+    # it is built, they are getonly
+    @property
+    def model(self):
+        if self._model is None:
+            self._build_pyomo_model()
+        return self._model
+
+    @property
+    def results(self):
+        if self._results is None:
+            self._solve_pyomo_model()
+        return self._results
+
+    # Define convenience functions for output
+    def pprint(self):
+        """Pretty print the object state"""
+        # TODO This should differ from __str__()
+        print(self.__str__())
+
+    def pplot(self):
+        """Pretty plot the object with matplotlib"""
+        pass
+
+    # Protected and private functions
+    def _modified(self):
+        """Automatically called if signal, base, peak, strategy or objective
+        is changed. This resets model and results variable"""
+        self._model = None
+        self._results = None
+
+    def _build_pyomo_model(self):
+        """Create a Pyomo Model, save it internally"""
         is_completely_defined = all([self.signal, self.base,
                                      self.peak, self.objective])
         if is_completely_defined:
-            return self._pyomo_model()
+            model = pe.ConcreteModel(name=self.name)
+            self._add_vars(model)
+            self._add_constraints(model)
+            self._add_strategy(model)
+            self._add_objective(model)
         else:
             raise DataIsNotCompletelyDefinedError()
+        self._model = model
 
-    def _pyomo_model(self):
-        """Create a Pyomo Model"""
-        model = pe.ConcreteModel(name=self.name)
-        self._add_vars(model)
-        self._add_constraints(model)
-        self._add_strategy(model)
-        self._add_objective(model)
-        return model
+    def _solve_pyomo_model(self):
+        """Solve the pyomo model, build it if neccessary, save internally"""
+        solver = pe.SolverFactory(self.solver.name)
+        solver.solve(self.model)
+        self._results = Results(self.model, self.signal)
 
-    def solve(self):
-        pass
-
-    def results(self):
-        pass
-
-    def pprint(self):
-        pass
-
-    def pplot(self):
-        pass
-
+    # Load strategy building functions from module buildmodel into class
     def _add_strategy(self, model):
-        if self.strategy == Strategy.inter:
+        """Add strategy constraints to pyomo model"""
+        if self.strategy.name == 'inter':
             _buildmodel.add_inter_constraint()
-        elif self.strategy == Strategy.nointer:
+        elif self.strategy.name == 'nointer':
             _buildmodel.add_nointer_constraint(model)
 
+    # Load variable building functions from module buildmodel into class
     def _add_vars(self, model):
+        """Add variable definitions to pyomo model"""
         _buildmodel.add_vars(self, model)
 
+    # Load contraint building functions from module buildmodel into class
     def _add_constraints(self, model):
+        """Add constraints to pyomo model"""
         _buildmodel.add_constraints(self, model)
 
+    # Load objective building functions from module buildmodel into class
     def _add_objective(self, model):
-
-        if self.objective == Objective.power:
+        """Adds objective (in a larger sense) or aim to pyomo model"""
+        if self.objective.name == 'power':
             _buildmodel.add_peak_cutting_objective(self, model)
-        elif self.objective == Objective.energy:
+        elif self.objective.name == 'energy':
             _buildmodel.add_throughput_objective(self, model)
 
         _buildmodel.add_capacity_minimizing_objective(self, model)
+
+    def __str__(self):
+        """Return verbose string describing object"""
+        # TODO implement
+        self.__repr__()
