@@ -23,7 +23,7 @@ class OptimModel:
         objective   - 'power' or 'energy'
     When called, it builds a pyomo model object from the defined data.
     """
-    def __init__(self, signal=None, base=None, peak=None, objective='power',
+    def __init__(self, signal=None, base=None, peak=None, objective=None,
                  strategy='inter', solver='gurobi',
                  name='Hybrid Storage Optimization', info=None):
         self._signal = None
@@ -44,8 +44,9 @@ class OptimModel:
             self.base = base
         if peak is not None:
             self.peak = peak
+        if objective is not None:
+            self.objective = objective
 
-        self.objective = objective
         self.strategy = strategy
         self.solver = solver
         self.name = name
@@ -59,9 +60,9 @@ class OptimModel:
     def signal(self):
         return self._signal
 
-    # noinspection PyArgumentList
     @signal.setter
     def signal(self, val):
+        # noinspection PyArgumentList
         self._signal = Signal(val)
         self._modified()
 
@@ -91,6 +92,7 @@ class OptimModel:
 
     @objective.setter
     def objective(self, val):
+        # noinspection PyArgumentList
         self._objective = Objective(val)
         self._modified()
 
@@ -122,7 +124,7 @@ class OptimModel:
         self._name = str(val)
 
     # The following properties check if the variable is available, if not,
-    # it is built, they are getonly
+    # it is built; they are getonly
     @property
     def model(self):
         if self._model is None:
@@ -143,6 +145,7 @@ class OptimModel:
 
     def pplot(self):
         """Pretty plot the object with matplotlib"""
+        # TODO implement this stuff
         pass
 
     # Protected and private functions

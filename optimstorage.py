@@ -27,10 +27,10 @@ class Storage:
     def __init__(self, power, efficiency, selfdischarge):
         self._power = None
         self._efficiency = None
-        self._discharge = None
+        self._selfdischarge = None
         self.power = power
         self._efficiency = efficiency
-        self._discharge = selfdischarge
+        self._selfdischarge = selfdischarge
 
     @__init__.add
     def __init__(self, storage):
@@ -60,11 +60,11 @@ class Storage:
 
     @property
     def selfdischarge(self):
-        return self._discharge
+        return self._selfdischarge
 
     @selfdischarge.setter
     def selfdischarge(self, value):
-        self._discharge = float(value)
+        self._selfdischarge = float(value)
 
     def pprint(self):
         # TODO implement
@@ -81,11 +81,11 @@ class Storage:
 
 class Signal:
     @overload
-    def __init__(self, time, val):
-        self._time = tuple(float(stime) for stime in time)
-        self._val = tuple(float(sval) for sval in val)
-        self._dtime = [second - first for first, second
-                       in zip((0,) + self.time[:-1], self.time)]
+    def __init__(self, times, vals):
+        self._times = tuple(float(time) for time in times)
+        self._vals = tuple(float(val) for val in vals)
+        self._dtimes = [second - first for first, second
+                        in zip((0,) + self.times[:-1], self.times)]
 
         self._validate()
 
@@ -94,16 +94,16 @@ class Signal:
         self.__init__(signal.time, signal.val)
 
     @property
-    def time(self):
-        return self._time
+    def times(self):
+        return self._times
 
     @property
-    def val(self):
-        return self._val
+    def vals(self):
+        return self._vals
 
     @property
-    def dtime(self):
-        return self._dtime
+    def dtimes(self):
+        return self._dtimes
 
     def pplot(self):
         # TODO implement
@@ -114,32 +114,32 @@ class Signal:
         pass
 
     def _validate(self):
-        is_strictly_monotoneous = all(val > 0 for val in self.dtime)
+        is_strictly_monotoneous = all(val > 0 for val in self.dtimes)
         if not is_strictly_monotoneous:
             raise TimeVectorNotStrictlyMonotoneousError
 
-        is_same_length = len(self.time) == len(self.val)
+        is_same_length = len(self.times) == len(self.vals)
         if not is_same_length:
             raise TimeValueVectorsNotEqualLengthError
 
     def __getitem__(self, item):
-        return self.time[item], self.val[item]
+        return self.times[item], self.vals[item]
 
     def __add__(self, other):
         """Adds values of two signals if time base is equivalent"""
-        is_same_time = all([a == b for a, b in zip(self.time, other.time)])
+        is_same_time = all([a == b for a, b in zip(self.times, other.time)])
         if not is_same_time:
             raise TimeVectorsNotEqualError
 
-        vals = (a + b for a, b in zip(self.val, other.val))
+        vals = (a + b for a, b in zip(self.vals, other.val))
 
-        return Signal(self.time, vals)
+        return Signal(self.times, vals)
 
     def __neg__(self):
-        return Signal(self.time, [-x for x in self.val])
+        return Signal(self.times, [-x for x in self.vals])
 
     def __len__(self):
-        return len(self.time)
+        return len(self.times)
 
     def __str__(self):
         # TODO implement

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""This module aggregates helper functions related to module 'model'"""
+"""This module aggregates helper functions related to module 'optimmodel'
+Its related to building the pyomo model for HESS"""
 
 import pyomo.environ as pe
 
