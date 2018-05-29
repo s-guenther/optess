@@ -173,6 +173,7 @@ class OptimModel:
         """Solve the pyomo model, build it if neccessary, save internally"""
         solver = pe.SolverFactory(self.solver.name)
         solver.solve(self.model)
+        # TODO add test if successful
         self._results = Results(self.model, self.signal)
 
     # Load strategy building functions from module buildmodel into class
@@ -196,12 +197,12 @@ class OptimModel:
     # Load objective building functions from module buildmodel into class
     def _add_objective(self, model):
         """Adds objective (in a larger sense) or aim to pyomo model"""
-        if self.objective.name == 'power':
+        if self.objective.type == 'power':
             _buildmodel.add_peak_cutting_objective(self, model)
-        elif self.objective.name == 'energy':
+        elif self.objective.type == 'energy':
             _buildmodel.add_throughput_objective(self, model)
 
-        _buildmodel.add_capacity_minimizing_objective(self, model)
+        _buildmodel.add_capacity_minimizing_objective(model)
 
     def __str__(self):
         """Return verbose string describing object"""

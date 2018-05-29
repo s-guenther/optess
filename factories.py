@@ -23,6 +23,9 @@ class UnknownObjectiveError(ValueError):
 # ### Factories
 # ###
 
+# TODO replace strings with enums?
+
+
 def datafactory(datatype, *args):
     """Builds a Signal representing a load profile as an input data for the
     optimisation.
@@ -30,9 +33,9 @@ def datafactory(datatype, *args):
         datafactory('std', nsamples=64)
         datafactory('alt', nsamples=64)
     """
-    if datatype is 'std':
+    if datatype == 'std':
         return _stdvals(*args)
-    elif datatype is 'alt':
+    elif datatype == 'alt':
         return _altvals(*args)
     else:
         raise UnknownDatatypeError
@@ -53,23 +56,23 @@ def storagefactory(datatype):
     pwr, prefs = datatype.split(sep)
     storageargs = []
 
-    if pwr is '025':
+    if pwr == '025':
         storageargs += [0.25]
-    elif pwr is '05':
+    elif pwr == '05':
         storageargs += [0.5]
-    elif pwr is '075':
+    elif pwr == '075':
         storageargs += [0.75]
     else:
         raise UnknownStorageError
 
     # storageargs += [efficiency, selfdischarge]
-    if prefs is 'ideal':
-        storageargs += [0, 1]
-    elif prefs is 'low':
+    if prefs == 'ideal':
+        storageargs += [1, 0]
+    elif prefs == 'low':
         storageargs += [0.95, 0.01]
-    elif prefs is 'med':
+    elif prefs == 'med':
         storageargs += [0.9, 0.02]
-    elif prefs is 'high':
+    elif prefs == 'high':
         storageargs += [0.8, 0.05]
     else:
         raise UnknownStorageError
@@ -82,13 +85,13 @@ def objectivefactory(datatype):
     Currently implemented:
         objectivefactory('std0-3')
     """
-    if datatype is 'std0-4':
+    if datatype == 'std0-4':
         return Objective('power', 4)
     else:
         raise UnknownObjectiveError
 
 
-def optimsetupfactory(datatype, *args):
+def optimsetupfactory(setup, *args):
     """Builds a predefined setup for optimisation, gathering object
     instantiation of the other factories (data, storage, objective).
     Currently implemented:
@@ -104,24 +107,24 @@ def optimsetupfactory(datatype, *args):
         model = OptimModel(*optsetup)
     """
     sep = '.'
-    data, loss = datatype.split(sep)
+    data, loss = setup.split(sep)
     if not args:
         cut = '05'
     else:
         cut = args[0]
-    if cut is '025':
+    if cut == '025':
         cutbase = '025'
         cutpeak = '075'
-    elif cut is '05':
+    elif cut == '05':
         cutbase = '05'
         cutpeak = '05'
-    elif cut is '075':
+    elif cut == '075':
         cutbase = '075'
         cutpeak = '025'
     else:
         raise UnknownStorageError
 
-    # This tuple can be directly unpacked directly into OptimModel
+    # This tuple can be unpacked directly into OptimModel
     OptimSetup = namedtuple('OptimSetup', 'signal base peak objective '
                                           'strategy solver name info')
 
@@ -132,7 +135,7 @@ def optimsetupfactory(datatype, *args):
            '{}.{}.{}.{}.{}'.format(data, cutbase, cutpeak, objective, strategy)
     info = None
 
-    optsetup = OptimSetup(signal=datafactory(data),
+    optsetup = OptimSetup(signal=datafactory(data, 8),
                           base=storagefactory(cutbase + '.' + loss),
                           peak=storagefactory(cutpeak + '.' + loss),
                           objective=objectivefactory(objective),

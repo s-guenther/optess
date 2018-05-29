@@ -64,7 +64,7 @@ def add_nointer_constraint(model):
                                           rule=bin_nointer_constraint)
 
 
-def add_capacity_minimizing_objective(model, multiplier):
+def add_capacity_minimizing_objective(model, multiplier=0.99):
     """Adds objective function that minimizes energy capacity of peak and
     base"""
     model.objexpr += model.peakenergycapacity
@@ -153,16 +153,16 @@ def _add_energy_vars(model):
 
 def _add_binary_vars(model):
     # Binary variable for base lower and upper bound switch
-    model.binbaselower = pe.Var(within=pe.Binary)
-    model.binbaseupper = pe.Var(within=pe.Binary)
+    model.binbaselower = pe.Var(model.ind, within=pe.Binary)
+    model.binbaseupper = pe.Var(model.ind, within=pe.Binary)
 
     # Binary variable for peak lower and upper bound switch
-    model.binpeaklower = pe.Var(within=pe.Binary)
-    model.binpeakupper = pe.Var(within=pe.Binary)
+    model.binpeaklower = pe.Var(model.ind, within=pe.Binary)
+    model.binpeakupper = pe.Var(model.ind, within=pe.Binary)
 
     # Binary variable for inter storage power lower and upper bound switch
-    model.bininterlower = pe.Var(within=pe.Binary)
-    model.bininterupper = pe.Var(within=pe.Binary)
+    model.bininterlower = pe.Var(model.ind, within=pe.Binary)
+    model.bininterupper = pe.Var(model.ind, within=pe.Binary)
 
 
 def _lock_plus_and_minus_constraint(model, multiplier=1):
@@ -180,8 +180,9 @@ def _lock_plus_and_minus_constraint(model, multiplier=1):
     model.con_lockbase = pe.Constraint(model.ind, rule=lock_base)
     model.con_lockpeak = pe.Constraint(model.ind, rule=lock_peak)
 
-    model.objexpr += (model.baseplus - model.baseminus +
-                      model.peakplus - model.peakminus)*multiplier
+    model.objexpr += sum(model.baseplus[ii] - model.baseminus[ii] +
+                         model.peakplus[ii] - model.peakminus[ii]
+                         for ii in model.ind)*multiplier
 
 
 def _bounds_for_inter_constraint(model, base, peak):
@@ -204,17 +205,17 @@ def _loss_model_constraint(model, signal, base, peak):
     """Implements efficiency losses and self discharge losses and links base
     power with inner base power (and peak power respectively)"""
 
-    dtime = signal.dtime
+    dtimes = signal.dtimes
 
     def base_losses(mod, ii):
         efficiency_losses = (mod.baseplus[ii] * base.efficiency.charge +
                              mod.baseminus[ii] / base.efficiency.discharge)
         if ii is 0:
             discharge_losses = -mod.baseenergyinit * \
-                               base.selfdischarge*dtime[ii]
+                               base.selfdischarge*dtimes[ii]
         else:
             discharge_losses = -mod.baseenergy[ii - 1] * \
-                               base.selfdischarge*dtime[ii]
+                               base.selfdischarge*dtimes[ii]
         return mod.baseinner[ii] == efficiency_losses + discharge_losses
 
     def peak_losses(mod, ii):
@@ -222,10 +223,10 @@ def _loss_model_constraint(model, signal, base, peak):
                              mod.peakminus[ii] / peak.efficiency.discharge)
         if ii is 0:
             discharge_losses = -mod.peakenergyinit * \
-                               peak.selfdischarge*dtime[ii]
+                               peak.selfdischarge*dtimes[ii]
         else:
             discharge_losses = -mod.peakenergy[ii - 1] * \
-                               peak.selfdischarge*dtime[ii]
+                               peak.selfdischarge*dtimes[ii]
         return mod.peakinner[ii] == efficiency_losses + discharge_losses
 
     model.con_baselosses = pe.Constraint(model.ind, rule=base_losses)
@@ -235,7 +236,7 @@ def _loss_model_constraint(model, signal, base, peak):
 def _integrate_power_constraint(model, signal):
     """Euler Integration per timestep of power to gain energy"""
 
-    dtime = signal.dtime
+    dtimes = signal.dtimes
 
     # constraint integrate energy - connect power and energy
     def integrate_base(mod, ii):
@@ -244,7 +245,7 @@ def _integrate_power_constraint(model, signal):
         else:
             lastenergy = mod.baseenergy[ii - 1]
         return (mod.baseenergy[ii] == lastenergy +
-                (mod.inter[ii] + mod.baseinner[ii]) * dtime[ii])
+                (mod.inter[ii] + mod.baseinner[ii]) * dtimes[ii])
 
     def integrate_peak(mod, ii):
         if ii is 0:
@@ -252,7 +253,7 @@ def _integrate_power_constraint(model, signal):
         else:
             lastenergy = mod.peakenergy[ii - 1]
         return (mod.peakenergy[ii] == lastenergy +
-                (mod.inter[ii] + mod.peakinner[ii]) * dtime[ii])
+                (mod.inter[ii] + mod.peakinner[ii]) * dtimes[ii])
 
     model.con_integratebase = pe.Constraint(model.ind, rule=integrate_base)
     model.con_integratepeak = pe.Constraint(model.ind, rule=integrate_peak)
@@ -292,27 +293,41 @@ def _energy_lower_max_constraint(model):
 def _binary_bounds_constraint(model, base, peak):
     """Buts a binary variable on all relevant power bounds"""
 
-    def bin_bound_base(mod, ii):
-        return (base.power.min*mod.binbaselower[ii],
-                mod.base[ii],
-                base.power.max*mod.binbaseupper[ii])
+    def bin_bound_base_lower(mod, ii):
+        return base.power.min*mod.binbaselower[ii] <= mod.base[ii]
 
-    def bin_bound_peak(mod, ii):
-        return (peak.power.min*mod.binpeaklower[ii],
-                mod.peak[ii],
-                peak.power.max*mod.binpeakupper[ii])
+    def bin_bound_base_upper(mod, ii):
+        return mod.base[ii] <= base.power.max*mod.binbaseupper[ii]
+
+    def bin_bound_peak_lower(mod, ii):
+        return peak.power.min*mod.binpeaklower[ii] <= mod.peak[ii]
+
+    def bin_bound_peak_upper(mod, ii):
+        return mod.peak[ii] <= peak.power.max*mod.binpeakupper[ii]
 
     inter_minpower = max(base.power.min, peak.power.min)
-    inter_maxpower = min(base.power.max, peak.power.ax)
+    inter_maxpower = min(base.power.max, peak.power.max)
 
-    def bin_bound_inter(mod, ii):
-        return (inter_minpower*mod.bininterlower[ii],
-                mod.base[ii],
-                inter_maxpower*mod.bininterupper[ii])
+    def bin_bound_inter_lower(mod, ii):
+        return inter_minpower*mod.bininterlower[ii] <= mod.base[ii]
 
-    model.con_bin_bound_base = pe.Constraint(model.ind, rule=bin_bound_base)
-    model.con_bin_bound_peak = pe.Constraint(model.ind, rule=bin_bound_peak)
-    model.con_bin_bound_inter = pe.Constraint(model.ind, rule=bin_bound_inter)
+    def bin_bound_inter_upper(mod, ii):
+        return mod.base[ii] <= inter_maxpower*mod.bininterupper[ii]
+
+    model.con_bin_bound_base_lower = pe.Constraint(model.ind,
+                                                   rule=bin_bound_base_lower)
+    model.con_bin_bound_base_upper = pe.Constraint(model.ind,
+                                                   rule=bin_bound_base_upper)
+
+    model.con_bin_bound_peak_lower = pe.Constraint(model.ind,
+                                                   rule=bin_bound_peak_lower)
+    model.con_bin_bound_peak_upper = pe.Constraint(model.ind,
+                                                   rule=bin_bound_peak_upper)
+
+    model.con_bin_bound_inter_lower = pe.Constraint(model.ind,
+                                                    rule=bin_bound_inter_lower)
+    model.con_bin_bound_inter_upper = pe.Constraint(model.ind,
+                                                    rule=bin_bound_inter_upper)
 
 
 def _binary_interval_locks(model):

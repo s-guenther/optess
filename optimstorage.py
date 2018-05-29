@@ -29,12 +29,12 @@ class Storage:
         self._efficiency = None
         self._selfdischarge = None
         self.power = power
-        self._efficiency = efficiency
-        self._selfdischarge = selfdischarge
+        self.efficiency = efficiency
+        self.selfdischarge = selfdischarge
 
     @__init__.add
     def __init__(self, storage):
-        self.__init__(storage.power, storage.efficiency, storage.discharge)
+        self.__init__(storage.power, storage.efficiency, storage.selfdischarge)
 
     @property
     def power(self):
@@ -57,6 +57,8 @@ class Storage:
             self._efficiency = _Efficiency(float(value), float(value))
         except TypeError:
             self._efficiency = _Efficiency(float(value[0]), float(value[1]))
+        if any(val <= 0 for val in self._efficiency):
+            raise ValueError('Efficiency must be greater than zero')
 
     @property
     def selfdischarge(self):
@@ -91,7 +93,7 @@ class Signal:
 
     @__init__.add
     def __init__(self, signal):
-        self.__init__(signal.time, signal.val)
+        self.__init__(signal.times, signal.vals)
 
     @property
     def times(self):
@@ -187,7 +189,7 @@ class Objective:
 
     @type.setter
     def type(self, value):
-        self.type = _ObjectiveType(value)
+        self._type = _ObjectiveType(value)
 
     def validate(self, signal):
         """Checks if objective can be even reached theoretically with the
@@ -208,14 +210,14 @@ class Objective:
 class Solver(Enum):
     """Gathers allowed solvers for simulation"""
     # TODO add more solvers
-    gurobi = 1
-    glpk = 2
+    gurobi = 'gurobi'
+    glpk = 'glpk'
 
 
 class Strategy(Enum):
     """Gathers allowed strategies for storage operation"""
-    inter = 1
-    nointer = 2
+    inter = 'inter'
+    nointer = 'nointer'
 
 
 class Results:
@@ -237,7 +239,7 @@ class Results:
         for varname in signalvarnames:
             setattr(self,
                     varname,
-                    Signal(signal.time,
+                    Signal(signal.times,
                            getattr(model, varname).get_values().values()))
 
         for varname in floatvarnames:
