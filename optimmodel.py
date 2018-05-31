@@ -4,7 +4,8 @@
 import pyomo.environ as pe
 
 import buildmodel as _buildmodel
-from optimstorage import Signal, Storage, Objective, Strategy, Results, Solver
+from optimstorage import Signal, Storage, Objective, Strategy, Results, \
+    NoResults, Solver
 
 
 class DataIsNotCompletelyDefinedError(Exception):
@@ -172,9 +173,13 @@ class OptimModel:
     def _solve_pyomo_model(self):
         """Solve the pyomo model, build it if neccessary, save internally"""
         solver = pe.SolverFactory(self.solver.name)
-        solver.solve(self.model)
-        # TODO add test if successful
-        self._results = Results(self.model, self.signal)
+        res = solver.solve(self.model)
+        # TODO implement better validity checking
+        valid = res['Solver'][0]['Status'].key == 'ok'
+        if valid:
+            self._results = Results(self.model, self.signal)
+        else:
+            self._results = NoResults()
 
     # Load strategy building functions from module buildmodel into class
     def _add_strategy(self, model):

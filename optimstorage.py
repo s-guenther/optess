@@ -1,9 +1,11 @@
 #!/usr/bin/env/python3
 """Defines data structure 'Signal'"""
 
+import operator
 from collections import namedtuple
-from overload import overload
 from enum import Enum
+from matplotlib import pyplot as plt
+from overload import overload
 
 
 class TimeValueVectorsNotEqualLengthError(ValueError):
@@ -43,9 +45,11 @@ class Storage:
     @power.setter
     def power(self, value):
         try:
-            self._power = _Power(float(value), float(value))
+            self._power = _Power(-float(value), float(value))
         except TypeError:
             self._power = _Power(float(value[0]), float(value[1]))
+        if self._power.min >= self._power.max:
+            raise ValueError('Min power lower equal max power')
 
     @property
     def efficiency(self):
@@ -76,9 +80,14 @@ class Storage:
         # TODO implement
         pass
 
-    def __str__(self):
-        # Todo implement
-        pass
+    def __repr__(self):
+        strfmt = '<{cls}(Power({pwr.min}, {pwr.max}), ' \
+                 'Efficiency({eff.charge}, {eff.discharge}), {selfdis})>'
+        fields = dict(cls=self.__class__.__name__,
+                      pwr=self.power,
+                      eff=self.efficiency,
+                      selfdis=self.selfdischarge)
+        return strfmt.format(**fields)
 
 
 class Signal:
@@ -107,9 +116,11 @@ class Signal:
     def dtimes(self):
         return self._dtimes
 
-    def pplot(self):
-        # TODO implement
-        pass
+    def pplot(self, plotfcn='step', ax=None, **kwargs):
+        ax = ax if ax else _make_empty_axes()
+        pltfcn = getattr(ax, plotfcn)
+        pltfcn(self.times, self.vals, **kwargs)
+        plt.draw()
 
     def pprint(self):
         # TODO implement
@@ -124,18 +135,60 @@ class Signal:
         if not is_same_length:
             raise TimeValueVectorsNotEqualLengthError
 
+    def _is_same_time(self, other):
+        return all([a == b for a, b in zip(self.times, other.times)])
+
     def __getitem__(self, item):
         return self.times[item], self.vals[item]
 
+    def _operator_template(self, other, fcn):
+        """Defines a template functions for scalar operations like __add__,
+        __eq__, __mul__, __lt__, __gt__. The template defines a try except
+        else clause which performs control flow depending on scalar or
+        signal input. fcn is the function which is performed on the inputs"""
+        try:
+            # Duck typed test if input is signal
+            other = Signal(other)
+        except AttributeError:
+            # Assume input is scalar, Scalar function is applied
+            valvec = (fcn(val, other) for val in self.vals)
+        else:
+            # Signal function is applied
+            if not self._is_same_time(other):
+                raise TimeVectorsNotEqualError
+            valvec = (fcn(a, b) for a, b in zip(self.vals, other.vals))
+        return Signal(self.times, valvec)
+
     def __add__(self, other):
-        """Adds values of two signals if time base is equivalent"""
-        is_same_time = all([a == b for a, b in zip(self.times, other.time)])
-        if not is_same_time:
-            raise TimeVectorsNotEqualError
+        """Adds values of two signals if time base is equivalent or add a
+        scalar to signal"""
+        return self._operator_template(other, fcn=operator.add)
 
-        vals = (a + b for a, b in zip(self.vals, other.val))
+    def __eq__(self, other):
+        """Elementwise comparision, other can be a signal by itself on the
+        same time base, or a scalar"""
+        return self._operator_template(other, fcn=operator.eq)
 
-        return Signal(self.times, vals)
+    def __mul__(self, other):
+        """Elementwise multiplication in case other is a signal, or scalar
+        multiplication in case of other is a scalar"""
+        return self._operator_template(other, fcn=operator.mul)
+
+    def __lt__(self, other):
+        """Comparision with other signal of same time base or scalar"""
+        return self._operator_template(other, fcn=operator.lt)
+
+    def __gt__(self, other):
+        """Comparision with other signal of same time base or scalar"""
+        return self._operator_template(other, fcn=operator.gt)
+
+    def __ge__(self, other):
+        """Comparision with other signal of same time base or scalar"""
+        return self._operator_template(other, fcn=operator.ge)
+
+    def __le__(self, other):
+        """Comparision with other signal of same time base or scalar"""
+        return self._operator_template(other, fcn=operator.le)
 
     def __neg__(self):
         return Signal(self.times, [-x for x in self.vals])
@@ -143,9 +196,17 @@ class Signal:
     def __len__(self):
         return len(self.times)
 
-    def __str__(self):
-        # TODO implement
-        pass
+    def __repr__(self):
+        strfmt = '<<{cls}({times}, {vals})>, length={length}>'
+        times = (repr(self._times) if len(self) <= 8
+                 else '<times at {}>'.format(hex(id(self._times))))
+        vals = (repr(self._vals) if len(self) <= 8
+                else '<vals at {}>'.format(hex(id(self.times))))
+        fields = dict(cls=self.__class__.__name__,
+                      times=times,
+                      vals=vals,
+                      length=len(self))
+        return strfmt.format(**fields)
 
 
 class _ObjectiveType(Enum):
@@ -245,7 +306,7 @@ class Results:
         for varname in floatvarnames:
             setattr(self,
                     varname,
-                    getattr(model, varname).get_values().values())
+                    list(getattr(model, varname).get_values().values())[0])
 
         # Derived variables
         self.both = self.base + self.peak
@@ -254,41 +315,57 @@ class Results:
         self.baseinter = self.inter
         self.peakinter = -self.inter
 
-        self.baseinterplus = Signal(signal.time,
+        # TODO refactor this to use __gt__/__lt__ of Signal class?
+        self.baseinterplus = Signal(signal.times,
                                     (x if x > 0 else 0
-                                     for x in self.baseinter.val))
-        self.baseinterminus = Signal(signal.time,
+                                     for x in self.baseinter.vals))
+        self.baseinterminus = Signal(signal.times,
                                      (x if x <= 0 else 0
-                                      for x in self.baseinter.val))
-        self.peakinterplus = Signal(signal.time,
+                                      for x in self.baseinter.vals))
+        self.peakinterplus = Signal(signal.times,
                                     (x if x > 0 else 0
-                                     for x in self.peakinter.val))
-        self.peakinterminus = Signal(signal.time,
+                                     for x in self.peakinter.vals))
+        self.peakinterminus = Signal(signal.times,
                                      (x if x <= 0 else 0
-                                      for x in self.peakinter.val))
+                                      for x in self.peakinter.vals))
 
-        self.baseinnerplus = Signal(signal.time,
+        self.baseinnerplus = Signal(signal.times,
                                     (x if x <= 0 else 0
-                                     for x in self.baseinner.val))
-        self.baseinnerminus = Signal(signal.time,
+                                     for x in self.baseinner.vals))
+        self.baseinnerminus = Signal(signal.times,
                                      (x if x <= 0 else 0
-                                      for x in self.baseinner.val))
+                                      for x in self.baseinner.vals))
 
-        self.peakinnerplus = Signal(signal.time,
+        self.peakinnerplus = Signal(signal.times,
                                     (x if x <= 0 else 0
-                                     for x in self.peakinner.val))
-        self.peakinnerminus = Signal(signal.time,
+                                     for x in self.peakinner.vals))
+        self.peakinnerminus = Signal(signal.times,
                                      (x if x <= 0 else 0
-                                      for x in self.peakinner.val))
+                                      for x in self.peakinner.vals))
 
     def pprint(self, fig=100):
         # TODO implement
         pass
 
-    def pplot(self):
-        # TODO implement
-        pass
+    def pplot(self, ax=None):
+        ax = ax if ax else _make_empty_axes()
 
-    def __str__(self):
-        # TODO implement
-        pass
+    def __repr__(self):
+        strfmt = '<<{cls} at {resid}>, base={b}, peak={p}>'
+        fields = dict(cls=self.__class__.__name__,
+                      resid=hex(id(self)),
+                      b=self.baseenergycapacity,
+                      p=self.peakenergycapacity)
+        return strfmt.format(**fields)
+
+
+class NoResults:
+    """Dummy Class which is returned if the solver failed"""
+    pass
+
+
+def _make_empty_axes():
+    ax = plt.figure().add_subplot(1, 1, 1)
+    ax.set_xlabel('Time')
+    ax.set_ylabel('Power')
+    return ax

@@ -133,8 +133,8 @@ def _add_power_vars(model, base, peak):
 
     # Power for inter-storage power flow
     model.inter = pe.Var(model.ind,
-                         bounds=(max(base.power.min, peak.power.max),
-                                 min(base.power.max, base.power.max)))
+                         bounds=(max(base.power.min, -peak.power.max),
+                                 min(base.power.max, -peak.power.min)))
 
 
 def _add_energy_vars(model):
