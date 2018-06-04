@@ -119,7 +119,7 @@ class Signal:
     def pplot(self, plotfcn='step', ax=None, **kwargs):
         ax = ax if ax else _make_empty_axes()
         pltfcn = getattr(ax, plotfcn)
-        pltfcn(self.times, self.vals, **kwargs)
+        pltfcn(*self[:], **kwargs)
         plt.draw()
 
     def pprint(self):
@@ -164,6 +164,22 @@ class Signal:
         scalar to signal"""
         return self._operator_template(other, fcn=operator.add)
 
+    def __radd__(self, other):
+        """Radds values of two signals if time base is equivalent or add a
+        signal to a scalar."""
+        return self._operator_template(other, fcn=operator.add)
+
+    def __sub__(self, other):
+        """Subtracts values of two signals if time base is equivalent or
+        substract a scalar from signal"""
+        return self._operator_template(other, fcn=operator.sub)
+
+    def __rsub__(self, other):
+        """Rsubs values of two signals if time base is equivalent or sub a
+        signal from a scalar."""
+
+        return -self._operator_template(other, fcn=operator.add)
+
     def __eq__(self, other):
         """Elementwise comparision, other can be a signal by itself on the
         same time base, or a scalar"""
@@ -173,6 +189,15 @@ class Signal:
         """Elementwise multiplication in case other is a signal, or scalar
         multiplication in case of other is a scalar"""
         return self._operator_template(other, fcn=operator.mul)
+
+    def __rmul__(self, other):
+        """Elementwise multiplication in case other is a signal, or scalar
+        multiplication in case of other is a scalar"""
+        return self._operator_template(other, fcn=operator.mul)
+
+    def __truediv__(self, other):
+        """Devide elementwise or by a scalar"""
+        return self._operator_template(other, fcn=operator.truediv)
 
     def __lt__(self, other):
         """Comparision with other signal of same time base or scalar"""
@@ -287,7 +312,6 @@ class Results:
         """Writes results in pyomo model to optimstorage classes."""
         # Direct variables stored in model
         signalvarnames = ['base', 'peak',
-                          'baseplus', 'baseminus', 'peakplus', 'peakminus',
                           'baseinner', 'peakinner',
                           'inter',
                           'baseenergy', 'peakenergy',
@@ -315,40 +339,54 @@ class Results:
         self.baseinter = self.inter
         self.peakinter = -self.inter
 
-        # TODO refactor this to use __gt__/__lt__ of Signal class?
-        self.baseinterplus = Signal(signal.times,
-                                    (x if x > 0 else 0
-                                     for x in self.baseinter.vals))
-        self.baseinterminus = Signal(signal.times,
-                                     (x if x <= 0 else 0
-                                      for x in self.baseinter.vals))
-        self.peakinterplus = Signal(signal.times,
-                                    (x if x > 0 else 0
-                                     for x in self.peakinter.vals))
-        self.peakinterminus = Signal(signal.times,
-                                     (x if x <= 0 else 0
-                                      for x in self.peakinter.vals))
-
-        self.baseinnerplus = Signal(signal.times,
-                                    (x if x <= 0 else 0
-                                     for x in self.baseinner.vals))
-        self.baseinnerminus = Signal(signal.times,
-                                     (x if x <= 0 else 0
-                                      for x in self.baseinner.vals))
-
-        self.peakinnerplus = Signal(signal.times,
-                                    (x if x <= 0 else 0
-                                     for x in self.peakinner.vals))
-        self.peakinnerminus = Signal(signal.times,
-                                     (x if x <= 0 else 0
-                                      for x in self.peakinner.vals))
+        self.basesignedlosses = ((self.base - self.baseinner) *
+                                 (self.base >= 0) +
+                                 (self.baseinner - self.base) *
+                                 (self.base < 0))
+        self.peaksignedlosses = ((self.peak - self.peakinner) *
+                                 (self.peak >= 0) +
+                                 (self.peakinner - self.peak) *
+                                 (self.peak < 0))
 
     def pprint(self, fig=100):
         # TODO implement
-        pass
+        print(self.__dict__)
 
     def pplot(self, ax=None):
+        # TODO pass additional arguments to plot functions ?
         ax = ax if ax else _make_empty_axes()
+
+        # Define functions which extract pos/neg vals from a signal and a
+        # function to apply these functions to a list of signals
+        def get_pos_vals(signal):
+            return ((signal >= 0)*signal).vals
+
+        def get_neg_vals(signal):
+            return ((signal < 0)*signal).vals
+
+        def apply_fcn_to_signals(inputsignals, fcn):
+            return [fcn(signal) for signal in inputsignals]
+
+        # Calculate plotdata with helper functions
+        signals = [self.baseinner, self.peakinner,
+                   self.basesignedlosses, self.peaksignedlosses,
+                   self.baseinter, self.peakinter]
+        posvalvecs = apply_fcn_to_signals(signals, get_pos_vals)
+        negvalvecs = apply_fcn_to_signals(signals, get_neg_vals)
+        timevec = self.both.times
+
+        # Plot positive and negative part of stackplot separately
+        plotconfig = dict(step='pre',
+                          colors=('#548b54', '#8b1a1a',  # palegreen, firebrick
+                                  '#7ccd7c', '#cd2626',  # 4 - 3 - 1
+                                  '#9aff9a', '#ff3030'))
+        ax.stackplot(timevec, *posvalvecs, **plotconfig)
+        ax.stackplot(timevec, *negvalvecs, **plotconfig)
+
+        # add black zero line
+        ax.axhline(color='black')
+        # add both base/peak added
+        self.both.pplot(ax=ax)
 
     def __repr__(self):
         strfmt = '<<{cls} at {resid}>, base={b}, peak={p}>'

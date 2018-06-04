@@ -3,7 +3,7 @@
 
 import pyomo.environ as pe
 
-import buildmodel as _buildmodel
+import build_hybrid_model as _buildmodel
 from optimstorage import Signal, Storage, Objective, Strategy, Results, \
     NoResults, Solver
 

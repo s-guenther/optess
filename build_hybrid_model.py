@@ -66,7 +66,7 @@ def add_nointer_constraint(model):
 
 def add_capacity_minimizing_objective(model, multiplier=0.99):
     """Adds objective function that minimizes energy capacity of peak and
-    base"""
+    base, add this objective last"""
     model.objexpr += model.peakenergycapacity
     model.objexpr += multiplier*model.baseenergycapacity
     model.obj = pe.Objective(expr=model.objexpr)

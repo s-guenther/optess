@@ -162,7 +162,7 @@ def _stdvals(nsamples=64):
     return Signal(xx, yy)
 
 
-def _altvals(nsamples=128):
+def _altvals(nsamples=64):
     """Alternative Testcase providing simple load profile"""
     x = range(23)
     y = [3, 5, 2, 5, 3, 5, 2, 5, 3, 5, 2, 5, 3, 1, 2, 3, 2, 1, 2, 2, 2, 2, 2]
