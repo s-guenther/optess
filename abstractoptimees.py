@@ -48,7 +48,6 @@ class AbstractOptimEES(ABC):
         # freely modified. It can be used to store arbitrary userdata
         self.info = info
 
-
     # The following properties reset the model and results if set
     @property
     def signal(self):

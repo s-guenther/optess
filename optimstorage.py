@@ -397,6 +397,50 @@ class HybridResults:
         return strfmt.format(**fields)
 
 
+class SingleResults:
+    """Represents results of optimization in an easily accassible way"""
+    # noinspection PyArgumentList
+    def __init__(self, model, signal):
+        """Writes results in pyomo model to optimstorage classes."""
+        # Direct variables stored in model
+        signalvarnames = ['power',
+                          'powerinner',
+                          'energy']
+        floatvarnames = ['energycapacity',
+                         'energyinit']
+
+        for varname in signalvarnames:
+            setattr(self,
+                    varname,
+                    Signal(signal.times,
+                           getattr(model, varname).get_values().values()))
+
+        for varname in floatvarnames:
+            setattr(self,
+                    varname,
+                    list(getattr(model, varname).get_values().values())[0])
+
+        # Derived variables
+        self.signedlosses = ((self.power - self.powerinner) *
+                             (self.power >= 0) +
+                             (self.powerinner - self.power) *
+                             (self.power < 0))
+
+    def pprint(self, fig=100):
+        # TODO implement
+        print(self.__dict__)
+
+    def pplot(self, ax=None):
+        pass
+
+    def __repr__(self):
+        strfmt = '<<{cls} at {resid}>, storage={}>'
+        fields = dict(cls=self.__class__.__name__,
+                      resid=hex(id(self)),
+                      s=self.energycapacity)
+        return strfmt.format(**fields)
+
+
 class NoResults:
     """Dummy Class which is returned if the solver failed"""
     pass

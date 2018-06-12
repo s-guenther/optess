@@ -3,86 +3,119 @@
 Its related to building the pyomo model for HESS"""
 
 import pyomo.environ as pe
+from optimstorage import Objective, Signal, Storage
 
 
-# ###
-# ### Wrapper functions
-# ###
+class SingleBuilder:
+    signal = None
+    storage = None
+    objective = None
+    model = None
 
-def add_vars(data, model):
-    """Defines all Variables of the optimization model"""
-    # Extract Variables from Data
-    signal = data.signal
-    storage = data.storage
+    # noinspection PyArgumentList
+    @classmethod
+    def build(cls, signal, storage, objective, name='Single EES Model'):
+        cls.signal = Signal(signal)
+        cls.storage = Storage(storage)
+        cls.objective = Objective(objective)
 
-    # Set for range of variables
-    model.ind = pe.Set(initialize=range(len(signal)), ordered=True)
+        cls.model = pe.ConcreteModel(name)
 
-    # Create empty objective expression, which is filled in subsequent steps
-    model.objexpr = 0
+        cls._add_vars()
+        cls._add_constraints()
 
-    _add_power_vars(model, storage)
-    _add_energy_vars(model)
+        if objective.type.name == 'power':
+            cls._add_peak_cutting_objective()
+        else:
+            cls._add_throughput_objective()
 
+        cls._add_capacity_minimizing_objective()
 
-def add_constraints(data, model):
-    """Defines all Constraints of the optimization model"""
-    # Extract Variables from data
-    signal = data.signal
-    storage = data.storage
+        return cls.model
 
-    # TODO
-    _lock_plus_and_minus_constraint(model)
-    _loss_model_constraint(model, signal, storage)
-    _integrate_power_constraint(model, signal)
-    _cyclic_energy_constraint(model)
+    @classmethod
+    def _add_vars(cls):
+        """Defines all Variables of the optimization model"""
+        # Extract Variables from Data
+        signal = cls.signal
+        storage = cls.storage
+        model = cls.model
 
+        # Set for range of variables
+        model.ind = pe.Set(initialize=range(len(signal)), ordered=True)
 
-def add_capacity_minimizing_objective(model, multiplier=0.99):
-    """Adds objective function that minimizes energy capacity of peak and
-    base"""
-    model.objexpr += model.peakenergycapacity
-    model.obj = pe.Objective(expr=model.objexpr)
+        # Create empty objective expression, which is filled in subsequent
+        # steps
+        model.objexpr = 0
 
+        _add_power_vars(model, storage)
+        _add_energy_vars(model)
 
-def add_peak_cutting_objective(data, model):
-    """Add objective - this is an objective or aim in a larger sense as it
-    will cut peak power which also adds constraints to reach the objective."""
-    signal = data.signal.value
-    minpower = data.objective.value.min
-    maxpower = data.objective.value.max
+    @classmethod
+    def _add_constraints(cls):
+        """Defines all Constraints of the optimization model"""
+        # Extract Variables from data
+        signal = cls.signal
+        storage = cls.storage
+        model = cls.model
 
-    def cutting_low(mod, ii):
-        return signal[ii] - mod.power[ii] >= minpower
+        _lock_plus_and_minus_constraint(model)
+        _loss_model_constraint(model, signal, storage)
+        _integrate_power_constraint(model, signal)
+        _cyclic_energy_constraint(model)
 
-    def cutting_high(mod, ii):
-        return signal[ii] - mod.power[ii] <= maxpower
+    @classmethod
+    def _add_capacity_minimizing_objective(cls):
+        """Adds objective function that minimizes energy capacity of peak and
+        base"""
+        model = cls.model
 
-    model.con_cutting_low = pe.Constraint(model.ind, rule=cutting_low)
-    model.con_cutting_high = pe.Constraint(model.ind, rule=cutting_high)
+        model.objexpr += model.energycapacity
+        model.obj = pe.Objective(expr=model.objexpr)
 
+    @classmethod
+    def _add_peak_cutting_objective(cls):
+        """Add objective - this is an objective or aim in a larger sense as it
+        will cut peak power which also adds constraints to reach the
+        objective."""
+        signal = cls.signal.vals
+        minpower = cls.objective.val.min
+        maxpower = cls.objective.val.max
+        model = cls.model
 
-def add_throughput_objective(data, model):
-    """Add objective - this is an objective or aim in a larger sense as it
-    will decrease the amount of energy taken from grid/supply etc. It will
-    also add constraints to reach objective. This objective only makes sense
-    if the power from grid changes sign, i.e. if power is fed into grid"""
-    signal = data.signal.value
-    dtime = data.signal.dtime
-    maxenergy = data.objective.value
+        def cutting_low(mod, ii):
+            return signal[ii] - mod.power[ii] >= minpower
 
-    model.deltaplus = pe.Var(model.ind, bounds=(0, None))
-    model.deltaminus = pe.Var(model.ind, bounds=(None, 0))
+        def cutting_high(mod, ii):
+            return signal[ii] - mod.power[ii] <= maxpower
 
-    def split_delta(mod, ii):
-        return (signal[ii] - mod.power[ii] <=
-                mod.deltaplus[ii] + mod.deltaminus[ii])
+        model.con_cutting_low = pe.Constraint(model.ind, rule=cutting_low)
+        model.con_cutting_high = pe.Constraint(model.ind, rule=cutting_high)
 
-    model.con_split_delta = pe.Constraint(model.ind, rule=split_delta)
+    @classmethod
+    def _add_throughput_objective(cls):
+        """Add objective - this is an objective or aim in a larger sense as it
+        will decrease the amount of energy taken from grid/supply etc. It will
+        also add constraints to reach objective. This objective only makes
+        sense if the power from grid changes sign, i.e. if power is fed into
+        grid"""
+        signal = cls.signal.vals
+        dtime = cls.signal.dtimes
+        maxenergy = cls.objective.val
+        model = cls.model
 
-    model.con_throughput = \
-        pe.Constraint(expr=sum(model.deltaplus[ii]*dtime[ii] <= maxenergy
-                               for ii in model.ind))
+        model.deltaplus = pe.Var(model.ind, bounds=(0, None))
+        model.deltaminus = pe.Var(model.ind, bounds=(None, 0))
+
+        def split_delta(mod, ii):
+            return (signal[ii] - mod.power[ii] <=
+                    mod.deltaplus[ii] + mod.deltaminus[ii])
+
+        model.con_split_delta = pe.Constraint(model.ind, rule=split_delta)
+
+        model.con_throughput = \
+            pe.Constraint(expr=sum(model.deltaplus[ii]*dtime[ii] <= maxenergy
+                                   for ii in model.ind))
 
 
 # ###

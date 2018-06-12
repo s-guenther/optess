@@ -56,12 +56,16 @@ def storagefactory(datatype):
     pwr, prefs = datatype.split(sep)
     storageargs = []
 
-    if pwr == '025':
+    if pwr == '0':
+        storageargs += [0]
+    elif pwr == '025':
         storageargs += [0.25]
     elif pwr == '05':
         storageargs += [0.5]
     elif pwr == '075':
         storageargs += [0.75]
+    elif pwr == '1':
+        storageargs += [1]
     else:
         raise UnknownStorageError
 
@@ -91,9 +95,9 @@ def objectivefactory(datatype):
         raise UnknownObjectiveError
 
 
-def optimsetupfactory(setup, *args):
-    """Builds a predefined setup for optimisation, gathering object
-    instantiation of the other factories (data, storage, objective).
+def hybridsetupfactory(setup, *args):
+    """Builds a predefined setup for hybrid storageoptimisation, gathering
+    object instantiation of the other factories (data, storage, objective).
     Currently implemented:
         optimsetupfactory('<data>.<storages>', cut='05')
         where <data> can take values of datafactory(),
@@ -125,8 +129,8 @@ def optimsetupfactory(setup, *args):
         raise UnknownStorageError
 
     # This tuple can be unpacked directly into OptimModel
-    OptimSetup = namedtuple('OptimSetup', 'signal base peak objective '
-                                          'strategy solver name info')
+    HybridSetup = namedtuple('HybridSetup', 'signal base peak objective '
+                                           'strategy solver name info')
 
     objective = 'std0-4'
     strategy = 'inter'
@@ -135,14 +139,57 @@ def optimsetupfactory(setup, *args):
            '{}.{}.{}.{}.{}'.format(data, cutbase, cutpeak, objective, strategy)
     info = None
 
-    optsetup = OptimSetup(signal=datafactory(data, 8),
-                          base=storagefactory(cutbase + '.' + loss),
-                          peak=storagefactory(cutpeak + '.' + loss),
-                          objective=objectivefactory(objective),
-                          strategy=Strategy(strategy),
-                          solver=Solver(solver),
-                          name=name,
-                          info=info)
+    optsetup = HybridSetup(signal=datafactory(data, 8),
+                           base=storagefactory(cutbase + '.' + loss),
+                           peak=storagefactory(cutpeak + '.' + loss),
+                           objective=objectivefactory(objective),
+                           strategy=Strategy(strategy),
+                           solver=Solver(solver),
+                           name=name,
+                           info=info)
+
+    return optsetup
+
+
+def singlesetupfactory(setup, *args):
+    """Builds a predefined setup for single storageoptimisation, gathering
+    object instantiation of the other factories (data, storage, objective).
+    Currently implemented:
+        optimsetupfactory('<data>.<storages>', power=1)
+        where <data> can take values of datafactory(),
+        <storages can take values of <y> component of storagefactory()
+        and cut can take values of <x> component of storagefactory().
+        E.g.:
+        optimsetupfactory('std.ideal')
+        optimsetupfactory('alt.low', '025')
+
+        Returns a namedtuple which cann be directly unpacked into OptimModel:
+        model = OptimModel(*optsetup)
+    """
+    sep = '.'
+    data, loss = setup.split(sep)
+    if not args:
+        power = '1'
+    else:
+        power = args[0]
+
+    # This tuple can be unpacked directly into OptimModel
+    SingleSetup = namedtuple('SingleSetup', 'signal storage objective '
+                                            'solver name info')
+
+    objective = 'std0-4'
+    strategy = 'inter'
+    solver = 'gurobi'
+    name = 'Single Storage Optimization ' \
+           '{}.{}.{}'.format(data, power, objective)
+    info = None
+
+    optsetup = SingleSetup(signal=datafactory(data, 8),
+                           storage=storagefactory(power + '.' + loss),
+                           objective=objectivefactory(objective),
+                           solver=Solver(solver),
+                           name=name,
+                           info=info)
 
     return optsetup
 

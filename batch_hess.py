@@ -4,18 +4,21 @@ Loads a predefined factory setup, feeds optimization class and prints some
 outputs.
 """
 
-from factories import optimsetupfactory, datafactory
+from factories import hybridsetupfactory, singlesetupfactory
 from optimhybridees import OptimHybridEES
-from matplotlib import pyplot as plt
+from optimsingleees import OptimSingleEES
 
-alt = datafactory('alt', 128)
-altmod = -(alt > 4)*(4 + alt)
+setup_hess = hybridsetupfactory('std.ideal', '05')
+optim_hess = OptimHybridEES(*setup_hess)
+model_hess = optim_hess.model
+solution_hess = optim_hess.results
+solution_hess.pplot()
 
-setup = optimsetupfactory('std.ideal', '05')
-optim = OptimHybridEES(*setup)
-model = optim.model
-solution = optim.results
-solution.pplot()
+setup_sess = singlesetupfactory('std.ideal', '05')
+optim_sess = OptimSingleEES(*setup_sess)
+model_sess = optim_sess.model
+solution_sess = optim_sess.results
+solution_sess.pplot()
 
 a = 'asdf'
 
