@@ -306,7 +306,7 @@ class Strategy(Enum):
     nointer = 'nointer'
 
 
-class Results:
+class HybridResults:
     """Represents results of optimization in an easily accassible way"""
     def __init__(self, model, signal):
         """Writes results in pyomo model to optimstorage classes."""
