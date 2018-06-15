@@ -3,7 +3,9 @@
 Its related to building the pyomo model for HESS"""
 
 import pyomo.environ as pe
-from optimstorage import Objective, Signal, Storage
+from powersignal import Signal
+from objective import Objective
+from storage import Storage
 
 
 class SingleBuilder:
@@ -132,7 +134,7 @@ def _add_power_vars(model, storage):
     model.powerminus = pe.Var(model.ind, bounds=(storage.power.min, 0))
 
     # Ideal inner base and peak power considering losses
-    model.powerinner = pe.Var(model.ind)
+    model.inner = pe.Var(model.ind)
 
 
 def _add_energy_vars(model):
@@ -144,6 +146,11 @@ def _add_energy_vars(model):
 
     # Initial condition of base and peak energy content
     model.energyinit = pe.Var(bounds=(0, None))
+
+    def lower_energymax(mod, ii):
+        return mod.energy[ii] <= mod.energycapacity
+
+    model.bnd_lower_energymax = pe.Constraint(model.ind, rule=lower_energymax)
 
 
 def _lock_plus_and_minus_constraint(model, multiplier=1):
@@ -178,7 +185,7 @@ def _loss_model_constraint(model, signal, storage):
         else:
             discharge_losses = -mod.energy[ii - 1] * \
                                storage.selfdischarge*dtimes[ii]
-        return mod.powerinner[ii] == efficiency_losses + discharge_losses
+        return mod.inner[ii] == efficiency_losses + discharge_losses
 
     model.con_storagelosses = pe.Constraint(model.ind, rule=losses)
 
@@ -194,7 +201,7 @@ def _integrate_power_constraint(model, signal):
             lastenergy = mod.energyinit
         else:
             lastenergy = mod.energy[ii - 1]
-        return mod.energy[ii] == lastenergy + mod.powerinner[ii] * dtimes[ii]
+        return mod.energy[ii] == lastenergy + mod.inner[ii] * dtimes[ii]
 
     model.con_integrate = pe.Constraint(model.ind, rule=integrate)
 

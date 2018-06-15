@@ -4,7 +4,9 @@
 import numpy as np
 import scipy.interpolate as interp
 from collections import namedtuple
-from optimstorage import Signal, Storage, Objective, Strategy, Solver
+from powersignal import Signal
+from storage import Storage
+from objective import Objective, Solver, Strategy
 
 
 class UnknownDatatypeError(ValueError):
@@ -66,6 +68,8 @@ def storagefactory(datatype):
         storageargs += [0.75]
     elif pwr == '1':
         storageargs += [1]
+    elif pwr == '2':
+        storageargs += [2]
     else:
         raise UnknownStorageError
 
@@ -130,7 +134,7 @@ def hybridsetupfactory(setup, *args):
 
     # This tuple can be unpacked directly into OptimModel
     HybridSetup = namedtuple('HybridSetup', 'signal base peak objective '
-                                           'strategy solver name info')
+                                            'strategy solver name info')
 
     objective = 'std0-4'
     strategy = 'inter'
@@ -139,7 +143,7 @@ def hybridsetupfactory(setup, *args):
            '{}.{}.{}.{}.{}'.format(data, cutbase, cutpeak, objective, strategy)
     info = None
 
-    optsetup = HybridSetup(signal=datafactory(data, 8),
+    optsetup = HybridSetup(signal=datafactory(data, 32),
                            base=storagefactory(cutbase + '.' + loss),
                            peak=storagefactory(cutpeak + '.' + loss),
                            objective=objectivefactory(objective),
@@ -178,13 +182,12 @@ def singlesetupfactory(setup, *args):
                                             'solver name info')
 
     objective = 'std0-4'
-    strategy = 'inter'
     solver = 'gurobi'
     name = 'Single Storage Optimization ' \
            '{}.{}.{}'.format(data, power, objective)
     info = None
 
-    optsetup = SingleSetup(signal=datafactory(data, 8),
+    optsetup = SingleSetup(signal=datafactory(data, 64),
                            storage=storagefactory(power + '.' + loss),
                            objective=objectivefactory(objective),
                            solver=Solver(solver),

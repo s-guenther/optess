@@ -3,7 +3,10 @@
 Its related to building the pyomo model for HESS"""
 
 import pyomo.environ as pe
-from optimstorage import Strategy, Objective, Signal, Storage
+
+from objective import Objective, Strategy
+from powersignal import Signal
+from storage import Storage
 
 
 class HybridBuilder:
@@ -194,6 +197,17 @@ def _add_energy_vars(model):
     # Initial condition of base and peak energy content
     model.baseenergyinit = pe.Var(bounds=(0, None))
     model.peakenergyinit = pe.Var(bounds=(0, None))
+
+    def lower_baseenergymax(mod, ii):
+        return mod.baseenergy[ii] <= mod.baseenergycapacity
+
+    def lower_peakenergymax(mod, ii):
+        return mod.peakenergy[ii] <= mod.peakenergycapacity
+
+    model.bnd_lower_baseenergymax = pe.Constraint(model.ind,
+                                                  rule=lower_baseenergymax)
+    model.bnd_lower_peakenergymax = pe.Constraint(model.ind,
+                                                  rule=lower_peakenergymax)
 
 
 def _add_binary_vars(model):
