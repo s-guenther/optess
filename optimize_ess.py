@@ -10,6 +10,7 @@ from objective import Objective, Solver, Strategy
 from results import SingleResults, HybridResults, NoResults
 from powersignal import Signal
 from storage import Storage
+from utility import make_three_empty_axes
 
 
 class DataIsNotCompletelyDefinedError(Exception):
@@ -114,12 +115,25 @@ class AbstractOptimizeESS(ABC):
         # TODO Maybe prepare a hook for derived classes
         print(self.__str__())
 
-    def pplot(self):
+    def pplot(self, ax=None):
         """Pretty plot the object with matplotlib"""
-        # TODO implement this stuff
-        # TODO Implement by delegating to composed objects
-        # TODO Maybe prepare a hook for derived classes
-        pass
+        if ax is None:
+            ax1, ax2, ax3 = make_three_empty_axes()
+        else:
+            try:
+                ax1, ax2, ax3 = ax
+            except TypeError:
+                ax1 = ax
+                ax2, ax3 = (None, None)
+            except ValueError:
+                ax1 = ax[0]
+                ax2 = ax[1]
+                ax3 = None
+
+        if ax2 and ax3:
+            self.results.pplot(ax=(ax2, ax3))
+        elif ax2 and not ax3:
+            self.results.pplot(ax=ax2)
 
     def __repr__(self):
         """Return verbose string describing object"""

@@ -7,9 +7,9 @@ outputs.
 from factories import hybridsetupfactory, singlesetupfactory
 from optimize_ess import OptimizeHybridESS, OptimizeSingleESS
 
-setup_hess = hybridsetupfactory('alt.ideal', '05')
-optim_hess = OptimizeHybridESS(*setup_hess)
-optim_hess.results.pplot()
+# setup_hess = hybridsetupfactory('alt.ideal', '05')
+# optim_hess = OptimizeHybridESS(*setup_hess)
+# optim_hess.results.pplot()
 
 setup_sess = singlesetupfactory('alt.med', '2')
 optim_sess = OptimizeSingleESS(*setup_sess)

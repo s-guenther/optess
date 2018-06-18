@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from utility import make_empty_axes
+from utility import make_empty_axes, make_two_empty_axes
 from powersignal import Signal
 
 
@@ -130,15 +130,27 @@ class SingleResults:
         # TODO
         # it should not be neccessary to split pos and neg vals as signals
         # should always have the same sign at a specific point in time
-        ax = ax if ax else make_empty_axes()
+        if ax is None:
+            ax1, ax2 = make_two_empty_axes()
+        else:
+            try:
+                ax1, ax2 = ax
+            except TypeError:
+                ax1 = ax
+                ax2 = None
+
         timevec = self.power.times
-        inner = (self.inner - self.signedlosses*(self.signedlosses < 0)).vals
+        inner = (self.inner - self.signedlosses*(self.signedlosses < 0)
+                 ).vals
         losses = self.signedlosses.vals
         plotconfig = dict(step='pre',
                           colors=('slateblue', 'cornflowerblue'))
-        ax.stackplot(timevec, inner, losses, **plotconfig)
-        ax.axhline(color='black')
-        self.power.pplot(ax=ax, color='blue', linewidth=2)
+        ax1.stackplot(timevec, inner, losses, **plotconfig)
+        ax1.axhline(color='black')
+        self.power.pplot(ax=ax1, color='blue', linewidth=2)
+
+        if ax2:
+            self.energy.pplot(ax=ax2, color='blue', linewidth=2)
 
     def __repr__(self):
         strfmt = '<<{cls} at {resid}>, storage={s}>'
