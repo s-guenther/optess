@@ -80,6 +80,7 @@ class HybridBuilder:
         _loss_model_constraint(model, signal, base, peak)
         _integrate_power_constraint(model, signal)
         _cyclic_energy_constraint(model)
+        _energy_lower_max_constraint(model)
         _binary_bounds_constraint(model, base, peak)
         _binary_interval_locks(model)
         _binary_cross_locks(model)
@@ -107,12 +108,12 @@ class HybridBuilder:
                                               rule=bin_nointer_constraint)
 
     @classmethod
-    def _add_capacity_minimizing_objective(cls, multiplier=0.99):
+    def _add_capacity_minimizing_objective(cls, multiplier=0.90):
         """Adds objective function that minimizes energy capacity of peak and
         base, add this objective last"""
         model = cls.model
-        model.objexpr += model.peakenergycapacity
-        model.objexpr += multiplier*model.baseenergycapacity
+        model.objexpr += model.baseenergycapacity
+        model.objexpr += multiplier*model.peakenergycapacity
         model.obj = pe.Objective(expr=model.objexpr)
 
     @classmethod
@@ -197,17 +198,6 @@ def _add_energy_vars(model):
     # Initial condition of base and peak energy content
     model.baseenergyinit = pe.Var(bounds=(0, None))
     model.peakenergyinit = pe.Var(bounds=(0, None))
-
-    def lower_baseenergymax(mod, ii):
-        return mod.baseenergy[ii] <= mod.baseenergycapacity
-
-    def lower_peakenergymax(mod, ii):
-        return mod.peakenergy[ii] <= mod.peakenergycapacity
-
-    model.bnd_lower_baseenergymax = pe.Constraint(model.ind,
-                                                  rule=lower_baseenergymax)
-    model.bnd_lower_peakenergymax = pe.Constraint(model.ind,
-                                                  rule=lower_peakenergymax)
 
 
 def _add_binary_vars(model):
@@ -312,7 +302,7 @@ def _integrate_power_constraint(model, signal):
         else:
             lastenergy = mod.peakenergy[ii - 1]
         return (mod.peakenergy[ii] == lastenergy +
-                (mod.inter[ii] + mod.peakinner[ii]) * dtimes[ii])
+                (-mod.inter[ii] + mod.peakinner[ii]) * dtimes[ii])
 
     model.con_integratebase = pe.Constraint(model.ind, rule=integrate_base)
     model.con_integratepeak = pe.Constraint(model.ind, rule=integrate_peak)
@@ -333,7 +323,7 @@ def _cyclic_energy_constraint(model):
 def _energy_lower_max_constraint(model):
     """Ensures that energy capacity of storages is not exceeded at all times"""
     def energy_base_lower_max(mod, ii):
-        return mod.baseenergy[ii] <= mod.basenergycapacity
+        return mod.baseenergy[ii] <= mod.baseenergycapacity
 
     def energy_peak_lower_max(mod, ii):
         return mod.baseenergy[ii] <= mod.peakenergycapacity
@@ -368,10 +358,10 @@ def _binary_bounds_constraint(model, base, peak):
     inter_maxpower = min(base.power.max, peak.power.max)
 
     def bin_bound_inter_lower(mod, ii):
-        return inter_minpower*mod.bininterlower[ii] <= mod.base[ii]
+        return inter_minpower*mod.bininterlower[ii] <= mod.inter[ii]
 
     def bin_bound_inter_upper(mod, ii):
-        return mod.base[ii] <= inter_maxpower*mod.bininterupper[ii]
+        return mod.inter[ii] <= inter_maxpower*mod.bininterupper[ii]
 
     model.con_bin_bound_base_lower = pe.Constraint(model.ind,
                                                    rule=bin_bound_base_lower)

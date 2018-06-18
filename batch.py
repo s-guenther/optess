@@ -11,7 +11,7 @@ setup_hess = hybridsetupfactory('alt.ideal', '05')
 optim_hess = OptimizeHybridESS(*setup_hess)
 optim_hess.results.pplot()
 
-setup_sess = singlesetupfactory('alt.med', '1')
+setup_sess = singlesetupfactory('alt.med', '2')
 optim_sess = OptimizeSingleESS(*setup_sess)
 optim_sess.results.pplot()
 

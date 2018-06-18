@@ -65,6 +65,7 @@ class SingleBuilder:
         _loss_model_constraint(model, signal, storage)
         _integrate_power_constraint(model, signal)
         _cyclic_energy_constraint(model)
+        _energy_lower_max_constraint(model)
 
     @classmethod
     def _add_capacity_minimizing_objective(cls):
@@ -147,11 +148,6 @@ def _add_energy_vars(model):
     # Initial condition of base and peak energy content
     model.energyinit = pe.Var(bounds=(0, None))
 
-    def lower_energymax(mod, ii):
-        return mod.energy[ii] <= mod.energycapacity
-
-    model.bnd_lower_energymax = pe.Constraint(model.ind, rule=lower_energymax)
-
 
 def _lock_plus_and_minus_constraint(model, multiplier=1):
     """ensure that powerplus + powerminus = power, this also adds a soft
@@ -218,10 +214,10 @@ def _energy_lower_max_constraint(model):
     """Ensures that energy capacity of storages is not exceeded at all times"""
 
     def energy_lower_max(mod, ii):
-        return mod.baseenergy[ii] <= mod.basenergycapacity
+        return mod.energy[ii] <= mod.energycapacity
 
     model.con_energylowermax = pe.Constraint(model.ind,
                                              rule=energy_lower_max)
 
     model.con_energyinitlowermax = \
-        pe.Constraint(expr=(model.energyinit <= model.baseenergycapacity))
+        pe.Constraint(expr=(model.energyinit <= model.energycapacity))

@@ -93,8 +93,8 @@ def objectivefactory(datatype):
     Currently implemented:
         objectivefactory('std0-3')
     """
-    if datatype == 'std0-4':
-        return Objective('power', 4)
+    if datatype == 'std0-3':
+        return Objective('power', 3)
     else:
         raise UnknownObjectiveError
 
@@ -118,32 +118,36 @@ def hybridsetupfactory(setup, *args):
     data, loss = setup.split(sep)
     if not args:
         cut = '05'
+        cutbase = '1'
+        cutpeak = '1'
     else:
         cut = args[0]
-    if cut == '025':
-        cutbase = '025'
-        cutpeak = '075'
-    elif cut == '05':
-        cutbase = '05'
-        cutpeak = '05'
-    elif cut == '075':
-        cutbase = '075'
-        cutpeak = '025'
-    else:
-        raise UnknownStorageError
+        cutbase = '1'
+        cutpeak = '1'
+    # if cut == '025':
+    #     cutbase = '025'
+    #     cutpeak = '075'
+    # elif cut == '05':
+    #     cutbase = '05'
+    #     cutpeak = '05'
+    # elif cut == '075':
+    #     cutbase = '075'
+    #     cutpeak = '025'
+    # else:
+    #     raise UnknownStorageError
 
     # This tuple can be unpacked directly into OptimModel
     HybridSetup = namedtuple('HybridSetup', 'signal base peak objective '
                                             'strategy solver name info')
 
-    objective = 'std0-4'
+    objective = 'std0-3'
     strategy = 'inter'
     solver = 'gurobi'
     name = 'Hybrid Storage Optimization ' \
            '{}.{}.{}.{}.{}'.format(data, cutbase, cutpeak, objective, strategy)
     info = None
 
-    optsetup = HybridSetup(signal=datafactory(data, 32),
+    optsetup = HybridSetup(signal=datafactory(data, 128),
                            base=storagefactory(cutbase + '.' + loss),
                            peak=storagefactory(cutpeak + '.' + loss),
                            objective=objectivefactory(objective),
@@ -173,7 +177,7 @@ def singlesetupfactory(setup, *args):
     sep = '.'
     data, loss = setup.split(sep)
     if not args:
-        power = '1'
+        power = '2'
     else:
         power = args[0]
 
@@ -181,13 +185,13 @@ def singlesetupfactory(setup, *args):
     SingleSetup = namedtuple('SingleSetup', 'signal storage objective '
                                             'solver name info')
 
-    objective = 'std0-4'
+    objective = 'std0-3'
     solver = 'gurobi'
     name = 'Single Storage Optimization ' \
            '{}.{}.{}'.format(data, power, objective)
     info = None
 
-    optsetup = SingleSetup(signal=datafactory(data, 64),
+    optsetup = SingleSetup(signal=datafactory(data, 128),
                            storage=storagefactory(power + '.' + loss),
                            objective=objectivefactory(objective),
                            solver=Solver(solver),
