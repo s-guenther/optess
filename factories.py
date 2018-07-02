@@ -147,7 +147,7 @@ def hybridsetupfactory(setup, *args):
            '{}.{}.{}.{}.{}'.format(data, cutbase, cutpeak, objective, strategy)
     info = None
 
-    optsetup = HybridSetup(signal=datafactory(data, 128),
+    optsetup = HybridSetup(signal=datafactory(data, 110),
                            base=storagefactory(cutbase + '.' + loss),
                            peak=storagefactory(cutpeak + '.' + loss),
                            objective=objectivefactory(objective),
@@ -191,7 +191,7 @@ def singlesetupfactory(setup, *args):
            '{}.{}.{}'.format(data, power, objective)
     info = None
 
-    optsetup = SingleSetup(signal=datafactory(data, 128),
+    optsetup = SingleSetup(signal=datafactory(data, 110),
                            storage=storagefactory(power + '.' + loss),
                            objective=objectivefactory(objective),
                            solver=Solver(solver),

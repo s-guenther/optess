@@ -27,7 +27,7 @@ class HybridBuilder:
         cls.objective = Objective(objective)
         cls.strategy = Strategy(strategy)
 
-        cls.model = pe.ConcreteModel(name)
+        cls.model = pe.ConcreteModel(name=name)
 
         cls._add_vars()
         cls._add_constraints()
@@ -42,6 +42,7 @@ class HybridBuilder:
         else:
             cls._add_throughput_objective()
 
+        cls._add_quadratic_penalty()
         cls._add_capacity_minimizing_objective()
 
         return cls.model
@@ -84,6 +85,7 @@ class HybridBuilder:
         _binary_bounds_constraint(model, base, peak)
         _binary_interval_locks(model)
         _binary_cross_locks(model)
+        # _binary_number_locks(model)
 
     @classmethod
     def _add_inter_constraint(cls):
@@ -108,13 +110,19 @@ class HybridBuilder:
                                               rule=bin_nointer_constraint)
 
     @classmethod
-    def _add_capacity_minimizing_objective(cls, multiplier=0.90):
+    def _add_capacity_minimizing_objective(cls, multiplier=0.50):
         """Adds objective function that minimizes energy capacity of peak and
         base, add this objective last"""
         model = cls.model
-        model.objexpr += model.baseenergycapacity
-        model.objexpr += multiplier*model.peakenergycapacity
+        model.objexpr += multiplier*model.baseenergycapacity
+        model.objexpr += model.peakenergycapacity
         model.obj = pe.Objective(expr=model.objexpr)
+
+    @classmethod
+    def _add_quadratic_penalty(cls, multiplier=1e-4):
+        model = cls.model
+        model.objexpr += multiplier*sum((model.base[ii] + model.peak[ii])**2
+                             for ii in model.ind)
 
     @classmethod
     def _add_peak_cutting_objective(cls):
@@ -215,8 +223,8 @@ def _add_binary_vars(model):
 
 
 def _lock_plus_and_minus_constraint(model, multiplier=1):
-    """ensure that powerplus + powerminus = power, this also adds a soft
-    constraint to the objective expression, minimizing powerplus - powerminus
+    """ensure that powerplus + powerminus = power, this also adds a penalty
+    term to the objective expression, minimizing powerplus - powerminus
     to prevent something like   power = plus + minus <==> 5 = 7 + -2
     and gain                    power = plus + minus <==> 5 = 5 + 0 instead"""
 
@@ -321,12 +329,13 @@ def _cyclic_energy_constraint(model):
 
 
 def _energy_lower_max_constraint(model):
-    """Ensures that energy capacity of storages is not exceeded at all times"""
+    """Ensures that energy capacity of storages is not exceeded for all
+    times"""
     def energy_base_lower_max(mod, ii):
         return mod.baseenergy[ii] <= mod.baseenergycapacity
 
     def energy_peak_lower_max(mod, ii):
-        return mod.baseenergy[ii] <= mod.peakenergycapacity
+        return mod.peakenergy[ii] <= mod.peakenergycapacity
 
     model.con_baseenergylowermax = pe.Constraint(model.ind,
                                                  rule=energy_base_lower_max)
@@ -342,36 +351,63 @@ def _energy_lower_max_constraint(model):
 def _binary_bounds_constraint(model, base, peak):
     """Buts a binary variable on all relevant power bounds"""
 
+    # Base binary bounds
     def bin_bound_base_lower(mod, ii):
         return base.power.min*mod.binbaselower[ii] <= mod.base[ii]
 
     def bin_bound_base_upper(mod, ii):
         return mod.base[ii] <= base.power.max*mod.binbaseupper[ii]
 
+    def bin_bound_baseminus_lower(mod, ii):
+        return base.power.min*mod.binbaselower[ii] <= mod.baseminus[ii]
+
+    def bin_bound_baseplus_upper(mod, ii):
+        return mod.baseplus[ii] <= base.power.max*mod.binbaseupper[ii]
+
+    model.con_bin_bound_base_lower = \
+        pe.Constraint(model.ind, rule=bin_bound_base_lower)
+    model.con_bin_bound_base_upper = \
+        pe.Constraint(model.ind, rule=bin_bound_base_upper)
+
+    model.con_bin_bound_baseminus_lower = \
+        pe.Constraint(model.ind, rule=bin_bound_baseminus_lower)
+    model.con_bin_bound_baseplus_upper = \
+        pe.Constraint(model.ind, rule=bin_bound_baseplus_upper)
+
+    # Peak binary bounds
     def bin_bound_peak_lower(mod, ii):
         return peak.power.min*mod.binpeaklower[ii] <= mod.peak[ii]
 
     def bin_bound_peak_upper(mod, ii):
         return mod.peak[ii] <= peak.power.max*mod.binpeakupper[ii]
 
-    inter_minpower = max(base.power.min, peak.power.min)
-    inter_maxpower = min(base.power.max, peak.power.max)
+    def bin_bound_peakminus_lower(mod, ii):
+        return peak.power.min*mod.binpeaklower[ii] <= mod.peakminus[ii]
+
+    def bin_bound_peakplus_upper(mod, ii):
+        return mod.peakplus[ii] <= peak.power.max*mod.binpeakupper[ii]
+
+    model.con_bin_bound_peak_lower = \
+        pe.Constraint(model.ind, rule=bin_bound_peak_lower)
+    model.con_bin_bound_peak_upper = \
+        pe.Constraint(model.ind, rule=bin_bound_peak_upper)
+
+    model.con_bin_bound_peakminus_lower = \
+        pe.Constraint(model.ind, rule=bin_bound_peakminus_lower)
+    model.con_bin_bound_peakplus_upper = \
+        pe.Constraint(model.ind, rule=bin_bound_peakplus_upper)
+
+    # Inter Power Flow Binary Bounds; firstly, define (continuous) bounds
+    inter_minpower = max(base.power.min/base.efficiency.discharge,
+                         peak.power.min/peak.efficiency.discharge)
+    inter_maxpower = min(base.power.max*base.efficiency.charge,
+                         peak.power.max*peak.efficiency.charge)
 
     def bin_bound_inter_lower(mod, ii):
         return inter_minpower*mod.bininterlower[ii] <= mod.inter[ii]
 
     def bin_bound_inter_upper(mod, ii):
         return mod.inter[ii] <= inter_maxpower*mod.bininterupper[ii]
-
-    model.con_bin_bound_base_lower = pe.Constraint(model.ind,
-                                                   rule=bin_bound_base_lower)
-    model.con_bin_bound_base_upper = pe.Constraint(model.ind,
-                                                   rule=bin_bound_base_upper)
-
-    model.con_bin_bound_peak_lower = pe.Constraint(model.ind,
-                                                   rule=bin_bound_peak_lower)
-    model.con_bin_bound_peak_upper = pe.Constraint(model.ind,
-                                                   rule=bin_bound_peak_upper)
 
     model.con_bin_bound_inter_lower = pe.Constraint(model.ind,
                                                     rule=bin_bound_inter_lower)
@@ -422,10 +458,10 @@ def _binary_cross_locks(model):
         return mod.bininterupper[ii] + mod.binbaselower[ii] <= 1
 
     def cross_peak_inter(mod, ii):
-        return mod.binpeakupper[ii] + mod.bininterlower[ii] <= 1
+        return mod.binpeakupper[ii] + mod.bininterupper[ii] <= 1
 
     def cross_inter_peak(mod, ii):
-        return mod.bininterupper[ii] + mod.binpeaklower[ii] <= 1
+        return mod.bininterlower[ii] + mod.binpeaklower[ii] <= 1
 
     model.con_cross_base_peak = pe.Constraint(model.ind,
                                               rule=cross_base_peak)
@@ -441,3 +477,19 @@ def _binary_cross_locks(model):
                                                rule=cross_peak_inter)
     model.con_cross_inter_peak = pe.Constraint(model.ind,
                                                rule=cross_inter_peak)
+
+
+def _binary_number_locks(model):
+    """Defines that a maximum of 2 in (base, peak, inter) can be nonzero"""
+    # Redundant and implicitely fulfilled with other binary constraints
+    def number_upper(mod, ii):
+        return (mod.binbaseupper[ii] + mod.binpeakupper[ii] +
+                mod.bininterupper[ii] <= 2)
+
+    def number_lower(mod, ii):
+        return (mod.binbaselower[ii] + mod.binpeaklower[ii] +
+                mod.bininterlower[ii] <= 2)
+
+    model.con_bin_number_upper = pe.Constraint(model.ind, rule=number_upper)
+    model.con_bin_number_lower = pe.Constraint(model.ind, rule=number_lower)
+

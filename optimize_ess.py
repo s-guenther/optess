@@ -21,7 +21,7 @@ class DataIsNotCompletelyDefinedError(Exception):
 
 class AbstractOptimizeESS(ABC):
     """Returns an initalized or uninitialized optimmodel object
-    which holds information about about a hybrid storage optimisation setting.
+    which holds information about a hybrid storage optimisation setting.
         signal      - load profile data (signal.t, signal.x values)
         base        - base storage data (base.power, base.efficiency,
                       base. discharge)
@@ -31,7 +31,7 @@ class AbstractOptimizeESS(ABC):
     """
     def __init__(self, signal=None, objective=None,
                  solver='gurobi',
-                 name='Hybrid Storage Optimization', info=None):
+                 name='Storage Optimization', info=None):
         self._signal = None
 
         self._objective = None
@@ -41,6 +41,7 @@ class AbstractOptimizeESS(ABC):
 
         self._model = None
         self._results = None
+        self._solverstatus = None
 
         if signal is not None:
             self.signal = signal
@@ -135,10 +136,10 @@ class AbstractOptimizeESS(ABC):
         elif ax2 and not ax3:
             self.results.pplot(ax=ax2)
 
-    def __repr__(self):
-        """Return verbose string describing object"""
-        # TODO implement
-        self.__repr__()
+    # def __repr__(self):
+    #     """Return verbose string describing object"""
+    #     # TODO implement
+    #     pass
 
     # Protected and private functions
     def _modified(self):
@@ -146,6 +147,7 @@ class AbstractOptimizeESS(ABC):
         is changed. This resets model and results variable"""
         self._model = None
         self._results = None
+        self._solverstatus = None
 
     def _build_pyomo_model(self):
         """Create a Pyomo Model, save it internally"""
@@ -160,6 +162,7 @@ class AbstractOptimizeESS(ABC):
         # TODO separate object passed in init
         solver = pe.SolverFactory(self.solver.name)
         res = solver.solve(self.model)
+        self._solverstatus = res
         # TODO implement better validity checking
         valid = res['Solver'][0]['Status'].key == 'ok'
         if valid:
@@ -263,7 +266,7 @@ class OptimizeSingleESS(AbstractOptimizeESS):
     """
 
     def __init__(self, signal=None, storage=None, objective=None,
-                 solver='gurobi', name='Hybrid Storage Optimization',
+                 solver='gurobi', name='Single Storage Optimization',
                  info=None):
         super().__init__(signal=signal, objective=objective, solver=solver,
                          name=name, info=info)

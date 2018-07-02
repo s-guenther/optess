@@ -4,6 +4,7 @@ from utility import make_empty_axes, make_two_empty_axes
 from powersignal import Signal
 
 
+# noinspection PyUnresolvedReferences
 class HybridResults:
     """Represents results of optimization in an easily accassible way"""
     def __init__(self, model, signal):
@@ -46,13 +47,20 @@ class HybridResults:
                                  (self.peakinner - self.peak) *
                                  (self.peak < 0))
 
-    def pprint(self, fig=100):
+    def pprint(self):
         # TODO implement
         print(self.__dict__)
 
     def pplot(self, ax=None):
         # TODO pass additional arguments to plot functions ?
-        ax = ax if ax else make_empty_axes()
+        if ax is None:
+            ax1, ax2 = make_two_empty_axes()
+        else:
+            try:
+                ax1, ax2 = ax
+            except TypeError:
+                ax1 = ax
+                ax2 = None
 
         # Define functions which extract pos/neg vals from a signal and a
         # function to apply these functions to a list of signals
@@ -66,7 +74,11 @@ class HybridResults:
             return [fcn(signal) for signal in inputsignals]
 
         # Calculate plotdata with helper functions
-        signals = [self.baseinner, self.peakinner,
+        baseinner_mod = (self.baseinner -
+                         self.basesignedlosses*(self.basesignedlosses < 0))
+        peakinner_mod = (self.peakinner -
+                         self.peaksignedlosses*(self.peaksignedlosses < 0))
+        signals = [baseinner_mod, peakinner_mod,
                    self.basesignedlosses, self.peaksignedlosses,
                    self.baseinter, self.peakinter]
         posvalvecs = apply_fcn_to_signals(signals, get_pos_vals)
@@ -78,13 +90,20 @@ class HybridResults:
                           colors=('#548b54', '#8b1a1a',  # palegreen, firebrick
                                   '#7ccd7c', '#cd2626',  # 4 - 3 - 1
                                   '#9aff9a', '#ff3030'))
-        ax.stackplot(timevec, *posvalvecs, **plotconfig)
-        ax.stackplot(timevec, *negvalvecs, **plotconfig)
+        ax1.stackplot(timevec, *posvalvecs, **plotconfig)
+        ax1.stackplot(timevec, *negvalvecs, **plotconfig)
 
         # add black zero line
-        ax.axhline(color='black')
+        ax1.axhline(color='black')
         # add both base/peak added
-        self.both.pplot(ax=ax, color='blue', linewidth=2)
+        self.both.pplot(ax=ax1, color='blue', linewidth=2)
+
+        ax1.autoscale(tight=True)
+
+        if ax2:
+            self.baseenergy.pplot(ax=ax2, color='#548b54', linewidth=2)
+            self.peakenergy.pplot(ax=ax2, color='#8b1a1a', linewidth=2)
+            ax2.autoscale(tight=True)
 
     def __repr__(self):
         strfmt = '<<{cls} at {resid}>, base={b}, peak={p}>'
@@ -95,6 +114,7 @@ class HybridResults:
         return strfmt.format(**fields)
 
 
+# noinspection PyUnresolvedReferences
 class SingleResults:
     """Represents results of optimization in an easily accassible way"""
     # noinspection PyArgumentList
@@ -122,7 +142,7 @@ class SingleResults:
         self.signedlosses = ((self.power - self.inner) * (self.power >= 0) +
                              (self.inner - self.power) * (self.power < 0))
 
-    def pprint(self, fig=100):
+    def pprint(self):
         # TODO implement
         print(self.__dict__)
 
@@ -149,8 +169,11 @@ class SingleResults:
         ax1.axhline(color='black')
         self.power.pplot(ax=ax1, color='blue', linewidth=2)
 
+        ax1.autoscale(tight=True)
+
         if ax2:
             self.energy.pplot(ax=ax2, color='blue', linewidth=2)
+            ax2.autoscale(tight=True)
 
     def __repr__(self):
         strfmt = '<<{cls} at {resid}>, storage={s}>'

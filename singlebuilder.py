@@ -31,6 +31,7 @@ class SingleBuilder:
         else:
             cls._add_throughput_objective()
 
+        cls._add_quadratic_penalty()
         cls._add_capacity_minimizing_objective()
 
         return cls.model
@@ -70,11 +71,16 @@ class SingleBuilder:
     @classmethod
     def _add_capacity_minimizing_objective(cls):
         """Adds objective function that minimizes energy capacity of peak and
-        base"""
+        base. Must be called last."""
         model = cls.model
 
         model.objexpr += model.energycapacity
         model.obj = pe.Objective(expr=model.objexpr)
+
+    @classmethod
+    def _add_quadratic_penalty(cls, multiplier=1e-4):
+        model = cls.model
+        model.objexpr += multiplier*sum(model.power[ii]**2 for ii in model.ind)
 
     @classmethod
     def _add_peak_cutting_objective(cls):
