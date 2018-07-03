@@ -19,6 +19,12 @@ class DataIsNotCompletelyDefinedError(Exception):
     pass
 
 
+class NoFirstStageCalculatedError(Exception):
+    """Error which is thrown in case the second stage shall be build but the
+    first stage is not existent for now"""
+    pass
+
+
 class AbstractOptimizeESS(ABC):
     """Returns an initalized or uninitialized optimmodel object
     which holds information about a hybrid storage optimisation setting.
@@ -35,24 +41,25 @@ class AbstractOptimizeESS(ABC):
         self._signal = None
 
         self._objective = None
-        self._strategy = None
         self._solver = None
         self._name = None
 
-        self._model = None
-        self._results = None
-        self._solverstatus = None
+        self._model = [None, None]
+        self._results = [None, None]
+        self._solverstatus = [None, None]
 
         if signal is not None:
             self.signal = signal
         if objective is not None:
             self.objective = objective
 
+        self._builder = None
         self.solver = solver
         self.name = name
 
         # info is the only variable which is not typechecked and can be
         # freely modified. It can be used to store arbitrary userdata
+        # TODO of any use? could be monkey patched at any time...
         self.info = info
 
     # The following properties reset the model and results if set
@@ -98,13 +105,13 @@ class AbstractOptimizeESS(ABC):
     # it is built; they are getonly
     @property
     def model(self):
-        if self._model is None:
-            self._build_pyomo_model()
+        if self._model[0] is None:
+            self._build_1st_pyomo_model()
         return self._model
 
     @property
     def results(self):
-        if self._results is None:
+        if self._results[0] is None:
             self._solve_pyomo_model()
         return self._results
 
@@ -145,30 +152,48 @@ class AbstractOptimizeESS(ABC):
     def _modified(self):
         """Automatically called if signal, base, peak, strategy or objective
         is changed. This resets model and results variable"""
-        self._model = None
-        self._results = None
-        self._solverstatus = None
+        self._model = [None, None]
+        self._results = [None, None]
+        self._solverstatus = [None, None]
 
-    def _build_pyomo_model(self):
+    def _build_1st_pyomo_model(self):
         """Create a Pyomo Model, save it internally"""
         if self._is_completely_defined():
-            model = self._call_builder()
+            model_1st = self._build_1st_stage()
         else:
             raise DataIsNotCompletelyDefinedError()
-        self._model = model
+        self._model[0] = model_1st
+
+    def _build_2nd_pyomo_model(self):
+        if self.model[0]:
+            model_2nd = self._build_2nd_stage()
+        else:
+            raise NoFirstStageCalculatedError()
+        self.model[1] = model_2nd
 
     def _solve_pyomo_model(self):
         """Solve the pyomo model, build it if neccessary, save internally"""
         # TODO separate object passed in init
         solver = pe.SolverFactory(self.solver.name)
-        res = solver.solve(self.model)
-        self._solverstatus = res
+        res = solver.solve(self.model[0])
+        self._solverstatus[0] = res
         # TODO implement better validity checking
         valid = res['Solver'][0]['Status'].key == 'ok'
         if valid:
-            self._results = self._call_results_generator()
+            self._results[0] = self._extract_results(self.model[0],
+                                                     self.signal)
+            # Build and calculate 2nd model
+            self._build_2nd_pyomo_model()
+            res_2nd = solver.solve(self.model[1])
+            self._solverstatus[1] = res_2nd
+            valid_2nd = res_2nd['Solver'][0]['Status'].key == 'ok'
+            if valid_2nd:
+                self._results[1] = self._extract_results(self.model[1],
+                                                         self.signal)
+            else:
+                self._results[1] = NoResults()
         else:
-            self._results = NoResults()
+            self._results = [NoResults()]*2
 
     @abstractmethod
     def _is_completely_defined(self):
@@ -176,12 +201,17 @@ class AbstractOptimizeESS(ABC):
 
     # GoF Strategy Pattern, delegate call to Subclasses
     @abstractmethod
-    def _call_builder(self):
+    def _build_1st_stage(self):
+        pass
+
+    @abstractmethod
+    def _build_2nd_stage(self):
         pass
 
     # GoF Strategy Pattern, delegate call to Subclasses
+    @staticmethod
     @abstractmethod
-    def _call_results_generator(self):
+    def _extract_results(model, signal):
         pass
 
 
@@ -272,6 +302,7 @@ class OptimizeSingleESS(AbstractOptimizeESS):
                          name=name, info=info)
 
         self._storage = None
+        self._builder = SingleBuilder()
 
         if storage is not None:
             self.storage = storage
@@ -290,8 +321,13 @@ class OptimizeSingleESS(AbstractOptimizeESS):
     def _is_completely_defined(self):
         return all([self.signal, self.storage, self.objective])
 
-    def _call_builder(self):
-        return SingleBuilder.build(self.signal, self.storage, self.objective)
+    @staticmethod
+    def _extract_results(model, signal):
+        return SingleResults(model, signal)
 
-    def _call_results_generator(self):
-        return SingleResults(self.model, self.signal)
+    def _build_1st_stage(self):
+        return self._builder.build_1st_stage(self.signal, self.storage,
+                                             self.objective)
+
+    def _build_2nd_stage(self):
+        return self._builder.build_2nd_stage()

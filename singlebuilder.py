@@ -3,46 +3,68 @@
 Its related to building the pyomo model for HESS"""
 
 import pyomo.environ as pe
+from copy import deepcopy
 from powersignal import Signal
 from objective import Objective
 from storage import Storage
 
 
 class SingleBuilder:
-    signal = None
-    storage = None
-    objective = None
-    model = None
+    def __init__(self):
+        self.signal = None
+        self.storage = None
+        self.objective = None
+        self.model = None
+        self.model_2nd = None
 
     # noinspection PyArgumentList
-    @classmethod
-    def build(cls, signal, storage, objective, name='Single EES Model'):
-        cls.signal = Signal(signal)
-        cls.storage = Storage(storage)
-        cls.objective = Objective(objective)
+    def build_1st_stage(self, signal, storage, objective,
+                        name='Single ESS Model, 1st Dimensioning Stage'):
+        self.signal = Signal(signal)
+        self.storage = Storage(storage)
+        self.objective = Objective(objective)
 
-        cls.model = pe.ConcreteModel(name)
+        self.model = pe.ConcreteModel(name)
 
-        cls._add_vars()
-        cls._add_constraints()
+        self._add_vars()
+        self._add_constraints()
 
         if objective.type.name == 'power':
-            cls._add_peak_cutting_objective()
+            self._add_peak_cutting_objective()
         else:
-            cls._add_throughput_objective()
+            self._add_throughput_objective()
 
-        cls._add_quadratic_penalty()
-        cls._add_capacity_minimizing_objective()
+        self._add_quadratic_penalty()
+        self._add_capacity_minimizing_objective()
 
-        return cls.model
+        return self.model
 
-    @classmethod
-    def _add_vars(cls):
+    def build_2nd_stage(self, name='Single ESS Model, '
+                                   '2nd Quadratic Minimizing Stage'):
+        self.model_2nd = deepcopy(self.model)
+        model = self.model_2nd
+
+        model.name = name
+
+        storagedim = list(model.energycapacity.get_values().values())[0]
+        self.model_2nd.con_lock_energy_capacity = \
+            pe.Constraint(expr=model.energycapacity == storagedim)
+
+        model.objexpr = sum(model.powerplus[ii]**2 + model.powerminus[ii]**2
+                            for ii in model.ind)
+        model.obj = pe.Objective(expr=model.objexpr)
+
+        return model
+
+    def build(self, signal, storage, objective, name='Single ESS Model'):
+        return self.build_1st_stage(signal, storage, objective, name)
+
+    def _add_vars(self):
         """Defines all Variables of the optimization model"""
         # Extract Variables from Data
-        signal = cls.signal
-        storage = cls.storage
-        model = cls.model
+        signal = self.signal
+        storage = self.storage
+        model = self.model
 
         # Set for range of variables
         model.ind = pe.Set(initialize=range(len(signal)), ordered=True)
@@ -54,13 +76,12 @@ class SingleBuilder:
         _add_power_vars(model, storage)
         _add_energy_vars(model)
 
-    @classmethod
-    def _add_constraints(cls):
+    def _add_constraints(self):
         """Defines all Constraints of the optimization model"""
         # Extract Variables from data
-        signal = cls.signal
-        storage = cls.storage
-        model = cls.model
+        signal = self.signal
+        storage = self.storage
+        model = self.model
 
         _lock_plus_and_minus_constraint(model)
         _loss_model_constraint(model, signal, storage)
@@ -68,29 +89,26 @@ class SingleBuilder:
         _cyclic_energy_constraint(model)
         _energy_lower_max_constraint(model)
 
-    @classmethod
-    def _add_capacity_minimizing_objective(cls):
+    def _add_capacity_minimizing_objective(self):
         """Adds objective function that minimizes energy capacity of peak and
         base. Must be called last."""
-        model = cls.model
+        model = self.model
 
         model.objexpr += model.energycapacity
         model.obj = pe.Objective(expr=model.objexpr)
 
-    @classmethod
-    def _add_quadratic_penalty(cls, multiplier=1e-4):
-        model = cls.model
+    def _add_quadratic_penalty(self, multiplier=1e-4):
+        model = self.model
         model.objexpr += multiplier*sum(model.power[ii]**2 for ii in model.ind)
 
-    @classmethod
-    def _add_peak_cutting_objective(cls):
+    def _add_peak_cutting_objective(self):
         """Add objective - this is an objective or aim in a larger sense as it
         will cut peak power which also adds constraints to reach the
         objective."""
-        signal = cls.signal.vals
-        minpower = cls.objective.val.min
-        maxpower = cls.objective.val.max
-        model = cls.model
+        signal = self.signal.vals
+        minpower = self.objective.val.min
+        maxpower = self.objective.val.max
+        model = self.model
 
         def cutting_low(mod, ii):
             return signal[ii] - mod.power[ii] >= minpower
@@ -101,17 +119,16 @@ class SingleBuilder:
         model.con_cutting_low = pe.Constraint(model.ind, rule=cutting_low)
         model.con_cutting_high = pe.Constraint(model.ind, rule=cutting_high)
 
-    @classmethod
-    def _add_throughput_objective(cls):
+    def _add_throughput_objective(self):
         """Add objective - this is an objective or aim in a larger sense as it
         will decrease the amount of energy taken from grid/supply etc. It will
         also add constraints to reach objective. This objective only makes
         sense if the power from grid changes sign, i.e. if power is fed into
         grid"""
-        signal = cls.signal.vals
-        dtime = cls.signal.dtimes
-        maxenergy = cls.objective.val
-        model = cls.model
+        signal = self.signal.vals
+        dtime = self.signal.dtimes
+        maxenergy = self.objective.val
+        model = self.model
 
         model.deltaplus = pe.Var(model.ind, bounds=(0, None))
         model.deltaminus = pe.Var(model.ind, bounds=(None, 0))
