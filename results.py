@@ -32,8 +32,8 @@ class HybridResults:
                     list(getattr(model, varname).get_values().values())[0])
 
         # Derived variables
-        self.both = self.base + self.peak
-        self.bothinner = self.baseinner + self.peakinner
+        self.power = self.base + self.peak
+        self.powerinner = self.baseinner + self.peakinner
 
         self.baseinter = self.inter
         self.peakinter = -self.inter
@@ -83,7 +83,7 @@ class HybridResults:
                    self.baseinter, self.peakinter]
         posvalvecs = apply_fcn_to_signals(signals, get_pos_vals)
         negvalvecs = apply_fcn_to_signals(signals, get_neg_vals)
-        timevec = self.both.times
+        timevec = self.power.times
 
         # Plot positive and negative part of stackplot separately
         plotconfig = dict(step='pre',
@@ -96,7 +96,7 @@ class HybridResults:
         # add black zero line
         ax1.axhline(color='black')
         # add both base/peak added
-        self.both.pplot(ax=ax1, color='blue', linewidth=2)
+        self.power.pplot(ax=ax1, color='blue', linewidth=2)
 
         ax1.autoscale(tight=True)
 

@@ -138,10 +138,37 @@ class AbstractOptimizeESS(ABC):
                 ax2 = ax[1]
                 ax3 = None
 
+        original_signal = self.signal
+        new_signal = self.signal - self.results[1].power
+
+        original_signal.pplot(ax=ax1, color='black', linewidth=2)
+        new_signal.pplot(ax=ax1, color='darkcyan', linewidth=2)
+        # noinspection PyUnresolvedReferences
+        bool_ge = (original_signal >= new_signal).vals
+        bool_ge = [bool(val) for val in bool_ge]
+        # this compensates a bug in fill_between to not draw the first element
+        for ii in range(1, len(bool_ge)):
+            if bool_ge[ii] and not bool_ge[ii-1]:
+                bool_ge[ii-1] = True
+        bool_le = (original_signal <= new_signal).vals
+        bool_le = [bool(val) for val in bool_le]
+        # this compensates a bug in fill_between to not draw the first element
+        for ii in range(1, len(bool_le)):
+            if bool_le[ii] and not bool_le[ii-1]:
+                bool_le[ii-1] = True
+        ax1.fill_between(original_signal.times,
+                         original_signal.vals, new_signal.vals,
+                         where=bool_ge, step='pre', color='LightSkyBlue')
+        ax1.fill_between(original_signal.times,
+                         original_signal.vals, new_signal.vals,
+                         where=bool_le, step='pre', color='LightSalmon')
+        ax1.autoscale(tight=True)
+        ax1.set_ylabel('Input Signal')
+
         if ax2 and ax3:
-            self.results.pplot(ax=(ax2, ax3))
+            self.results[1].pplot(ax=(ax2, ax3))
         elif ax2 and not ax3:
-            self.results.pplot(ax=ax2)
+            self.results[1].pplot(ax=ax2)
 
     # def __repr__(self):
     #     """Return verbose string describing object"""

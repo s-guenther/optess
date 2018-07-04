@@ -16,6 +16,7 @@ from optimize_ess import OptimizeHybridESS, OptimizeSingleESS
 setup_sess = singlesetupfactory('alt.low', '2')
 optim_sess = OptimizeSingleESS(*setup_sess)
 optim_sess.results[1].pplot()
+optim_sess.pplot()
 
 a = 'asdf'
 

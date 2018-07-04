@@ -52,6 +52,7 @@ class SingleBuilder:
 
         model.objexpr = sum(model.powerplus[ii]**2 + model.powerminus[ii]**2
                             for ii in model.ind)
+        model.del_component(model.obj)
         model.obj = pe.Objective(expr=model.objexpr)
 
         return model
