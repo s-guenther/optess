@@ -3,6 +3,7 @@
 Its related to building the pyomo model for HESS"""
 
 import pyomo.environ as pe
+from copy import deepcopy
 
 from objective import Objective, Strategy
 from powersignal import Signal
@@ -10,71 +11,101 @@ from storage import Storage
 
 
 class HybridBuilder:
-    signal = None
-    base = None
-    peak = None
-    objective = None
-    strategy = None
-    model = None
+    def __init__(self):
+        self.signal = None
+        self.base = None
+        self.peak = None
+        self.objective = None
+        self.strategy = None
+        self.model = None
+        self.model_2nd = None
 
     # noinspection PyArgumentList
-    @classmethod
-    def build(cls, signal, base, peak, objective,
-              strategy=Strategy.inter, name='Hybrid EES Model'):
-        cls.signal = Signal(signal)
-        cls.base = Storage(base)
-        cls.peak = Storage(peak)
-        cls.objective = Objective(objective)
-        cls.strategy = Strategy(strategy)
+    def build_1st_stage(self, signal, base, peak, objective,
+                        strategy=Strategy.inter, name='Hybrid EES Model'):
+        self.signal = Signal(signal)
+        self.base = Storage(base)
+        self.peak = Storage(peak)
+        self.objective = Objective(objective)
+        self.strategy = Strategy(strategy)
 
-        cls.model = pe.ConcreteModel(name=name)
+        self.model = pe.ConcreteModel(name=name)
 
-        cls._add_vars()
-        cls._add_constraints()
+        self._add_vars()
+        self._add_constraints()
 
         if strategy == Strategy.inter:
-            cls._add_inter_constraint()
+            self._add_inter_constraint()
         else:
-            cls._add_nointer_constraint()
+            self._add_nointer_constraint()
 
         if objective.type.name == 'power':
-            cls._add_peak_cutting_objective()
+            self._add_peak_cutting_objective()
         else:
-            cls._add_throughput_objective()
+            self._add_throughput_objective()
 
-        cls._add_quadratic_penalty()
-        cls._add_capacity_minimizing_objective()
+        self._add_capacity_minimizing_objective()
 
-        return cls.model
+        return self.model
 
-    @classmethod
-    def _add_vars(cls):
+    def build_2nd_stage(self):
+        self.model_2nd = deepcopy(self.model)
+        model = self.model_2nd
+
+        # Fix previously determined base and peak energy capacity
+        basedim = list(model.baseenergycapacity.get_values().values())[0]
+        peakdim = list(model.peakenergycapacity.get_values().values())[0]
+        self.model_2nd.con_lock_baseenergy_capacity = \
+            pe.Constraint(expr=model.baseenergycapacity == basedim)
+        self.model_2nd.con_lock_peakenergy_capacity = \
+            pe.Constraint(expr=model.peakenergycapacity == peakdim)
+
+        # Add quadratic minimizing expression
+        model.interplus = pe.Var(model.ind, bounds=(0, None))
+        model.interminus = pe.Var(model.ind, bounds=(None, 0))
+
+        def lock_inter(mod, ii):
+            return mod.inter[ii] == mod.interplus[ii] + mod.interminus[ii]
+
+        model.con_lockinter = pe.Constraint(model.ind, rule=lock_inter)
+
+        model.objexpr = sum(-model.baseminus[ii] - model.interminus[ii] for
+                            ii in model.ind)
+        model.del_component(model.obj)
+        model.obj = pe.Objective(expr=model.objexpr)
+
+        return model
+
+    def build(self, signal, base, peak, objective, strategy, name):
+        return self.build_1st_stage(signal, base, peak,
+                                    objective, strategy, name)
+
+    def _add_vars(self):
         """Defines all Variables of the optimization model"""
         # Extract Variables from Data
-        signal = cls.signal
-        base = cls.base
-        peak = cls.peak
-        model = cls.model
+        signal = self.signal
+        base = self.base
+        peak = self.peak
+        model = self.model
 
         # Set for range of variables
-        cls.model.ind = pe.Set(initialize=range(len(signal)), ordered=True)
+        self.model.ind = pe.Set(initialize=range(len(signal)), ordered=True)
 
         # Create empty objective expression, which is filled in subsequent
         # steps
-        cls.model.objexpr = 0
+        self.model.objexpr = 0
 
         _add_power_vars(model, base, peak)
         _add_energy_vars(model)
         _add_binary_vars(model)
 
-    @classmethod
-    def _add_constraints(cls):
+    def _add_constraints(self):
         """Defines all Constraints of the optimization model"""
         # Extract Variables from data
-        signal = cls.signal
-        base = cls.base
-        peak = cls.peak
-        model = cls.model
+        signal = self.signal
+        base = self.base
+        peak = self.peak
+        model = self.model
 
         _lock_plus_and_minus_constraint(model)
         _bounds_for_inter_constraint(model, base, peak)
@@ -87,17 +118,15 @@ class HybridBuilder:
         _binary_cross_locks(model)
         # _binary_number_locks(model)
 
-    @classmethod
-    def _add_inter_constraint(cls):
+    def _add_inter_constraint(self):
         """Adds constraint that allows an inter-storage power flow. This
         function does nothing as it is automatically satisfied, but is included
         for symmetry"""
         pass
 
-    @classmethod
-    def _add_nointer_constraint(cls):
+    def _add_nointer_constraint(self):
         """Sets inter storage power flow to zero to prevent reloading"""
-        model = cls.model
+        model = self.model
 
         def nointer_constraint(mod, ii):
             return mod.inter[ii] == 0
@@ -109,30 +138,22 @@ class HybridBuilder:
         model.con_bin_nointer = pe.Constraint(model.ind,
                                               rule=bin_nointer_constraint)
 
-    @classmethod
-    def _add_capacity_minimizing_objective(cls, multiplier=0.50):
+    def _add_capacity_minimizing_objective(self, multiplier=0.50):
         """Adds objective function that minimizes energy capacity of peak and
         base, add this objective last"""
-        model = cls.model
+        model = self.model
         model.objexpr += multiplier*model.baseenergycapacity
         model.objexpr += model.peakenergycapacity
         model.obj = pe.Objective(expr=model.objexpr)
 
-    @classmethod
-    def _add_quadratic_penalty(cls, multiplier=1e-4):
-        model = cls.model
-        model.objexpr += multiplier*sum((model.base[ii] + model.peak[ii])**2
-                             for ii in model.ind)
-
-    @classmethod
-    def _add_peak_cutting_objective(cls):
+    def _add_peak_cutting_objective(self):
         """Add objective - this is an objective or aim in a larger sense as it
         will cut peak power which also adds constraints to reach the
         objective."""
-        signal = cls.signal.vals
-        minpower = cls.objective.val.min
-        maxpower = cls.objective.val.max
-        model = cls.model
+        signal = self.signal.vals
+        minpower = self.objective.val.min
+        maxpower = self.objective.val.max
+        model = self.model
 
         def cutting_low(mod, ii):
             return signal[ii] - (mod.base[ii] + mod.peak[ii]) >= minpower
@@ -143,17 +164,16 @@ class HybridBuilder:
         model.con_cutting_low = pe.Constraint(model.ind, rule=cutting_low)
         model.con_cutting_high = pe.Constraint(model.ind, rule=cutting_high)
 
-    @classmethod
-    def _add_throughput_objective(cls):
+    def _add_throughput_objective(self):
         """Add objective - this is an objective or aim in a larger sense as it
         will decrease the amount of energy taken from grid/supply etc. It will
         also add constraints to reach objective. This objective only makes
         sense if the power from grid changes sign, i.e. if power is fed into
         grid"""
-        signal = cls.signal.vals
-        dtime = cls.signal.dtimes
-        maxenergy = cls.objective.val
-        model = cls.model
+        signal = self.signal.vals
+        dtime = self.signal.dtimes
+        maxenergy = self.objective.val
+        model = self.model
 
         model.deltaplus = pe.Var(model.ind, bounds=(0, None))
         model.deltaminus = pe.Var(model.ind, bounds=(None, 0))
@@ -492,4 +512,3 @@ def _binary_number_locks(model):
 
     model.con_bin_number_upper = pe.Constraint(model.ind, rule=number_upper)
     model.con_bin_number_lower = pe.Constraint(model.ind, rule=number_lower)
-

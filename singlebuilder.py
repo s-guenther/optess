@@ -34,7 +34,6 @@ class SingleBuilder:
         else:
             self._add_throughput_objective()
 
-        self._add_quadratic_penalty()
         self._add_capacity_minimizing_objective()
 
         return self.model
@@ -46,10 +45,12 @@ class SingleBuilder:
 
         model.name = name
 
+        # Fix previously determined energy capacity
         storagedim = list(model.energycapacity.get_values().values())[0]
         self.model_2nd.con_lock_energy_capacity = \
             pe.Constraint(expr=model.energycapacity == storagedim)
 
+        # Add quadratic minimizing expression
         model.objexpr = sum(model.powerplus[ii]**2 + model.powerminus[ii]**2
                             for ii in model.ind)
         model.del_component(model.obj)
@@ -97,10 +98,6 @@ class SingleBuilder:
 
         model.objexpr += model.energycapacity
         model.obj = pe.Objective(expr=model.objexpr)
-
-    def _add_quadratic_penalty(self, multiplier=1e-4):
-        model = self.model
-        model.objexpr += multiplier*sum(model.power[ii]**2 for ii in model.ind)
 
     def _add_peak_cutting_objective(self):
         """Add objective - this is an objective or aim in a larger sense as it

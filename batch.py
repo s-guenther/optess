@@ -6,17 +6,20 @@ outputs.
 
 from factories import hybridsetupfactory, singlesetupfactory
 from optimize_ess import OptimizeHybridESS, OptimizeSingleESS
+import timeit
 
-# setup_hess = hybridsetupfactory('alt.low', '05')
-# optim_hess = OptimizeHybridESS(*setup_hess)
-# optim_hess.results.pplot()
+start = timeit.default_timer()
+setup_hess = hybridsetupfactory('alt.low', '05')
+optim_hess = OptimizeHybridESS(*setup_hess)
+optim_hess.pplot()
+end = timeit.default_timer() - start
+print('HESS Calculation went for {} seconds'.format(end))
 
-# print(optim_hess.results)
-
+start = timeit.default_timer()
 setup_sess = singlesetupfactory('alt.low', '2')
 optim_sess = OptimizeSingleESS(*setup_sess)
-optim_sess.results[1].pplot()
 optim_sess.pplot()
+end = timeit.default_timer() - start
+print('SESS Calculation went for {} seconds'.format(end))
 
 a = 'asdf'
-

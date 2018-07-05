@@ -99,6 +99,9 @@ def objectivefactory(datatype):
         raise UnknownObjectiveError
 
 
+NPOINTS = 1760
+
+
 def hybridsetupfactory(setup, *args):
     """Builds a predefined setup for hybrid storageoptimisation, gathering
     object instantiation of the other factories (data, storage, objective).
@@ -147,7 +150,7 @@ def hybridsetupfactory(setup, *args):
            '{}.{}.{}.{}.{}'.format(data, cutbase, cutpeak, objective, strategy)
     info = None
 
-    optsetup = HybridSetup(signal=datafactory(data, 110),
+    optsetup = HybridSetup(signal=datafactory(data, NPOINTS),
                            base=storagefactory(cutbase + '.' + loss),
                            peak=storagefactory(cutpeak + '.' + loss),
                            objective=objectivefactory(objective),
@@ -191,7 +194,7 @@ def singlesetupfactory(setup, *args):
            '{}.{}.{}'.format(data, power, objective)
     info = None
 
-    optsetup = SingleSetup(signal=datafactory(data, 110),
+    optsetup = SingleSetup(signal=datafactory(data, NPOINTS),
                            storage=storagefactory(power + '.' + loss),
                            objective=objectivefactory(objective),
                            solver=Solver(solver),

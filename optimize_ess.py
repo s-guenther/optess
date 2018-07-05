@@ -270,6 +270,8 @@ class OptimizeHybridESS(AbstractOptimizeESS):
 
         self.strategy = strategy
 
+        self._builder = HybridBuilder()
+
     # The following properties reset the model and results if set
     @property
     def base(self):
@@ -303,12 +305,16 @@ class OptimizeHybridESS(AbstractOptimizeESS):
     def _is_completely_defined(self):
         return all([self.signal, self.base, self.peak, self.objective])
 
-    def _call_builder(self):
-        return HybridBuilder.build(self.signal, self.base, self.peak,
-                                   self.objective, self.strategy)
+    def _build_1st_stage(self):
+        return self._builder.build_1st_stage(self.signal, self.base, self.peak,
+                                             self.objective, self.strategy)
 
-    def _call_results_generator(self):
-        return HybridResults(self.model, self.signal)
+    def _build_2nd_stage(self):
+        return self._builder.build_2nd_stage()
+
+    @staticmethod
+    def _extract_results(model, signal):
+        return HybridResults(model, signal)
 
 
 class OptimizeSingleESS(AbstractOptimizeESS):
