@@ -141,14 +141,13 @@ def hybridsetupfactory(setup, *args):
 
     # This tuple can be unpacked directly into OptimModel
     HybridSetup = namedtuple('HybridSetup', 'signal base peak objective '
-                                            'strategy solver name info')
+                                            'strategy solver name')
 
     objective = 'std0-3'
     strategy = 'inter'
     solver = 'gurobi'
     name = 'Hybrid Storage Optimization ' \
            '{}.{}.{}.{}.{}'.format(data, cutbase, cutpeak, objective, strategy)
-    info = None
 
     optsetup = HybridSetup(signal=datafactory(data, NPOINTS),
                            base=storagefactory(cutbase + '.' + loss),
@@ -156,8 +155,7 @@ def hybridsetupfactory(setup, *args):
                            objective=objectivefactory(objective),
                            strategy=Strategy(strategy),
                            solver=Solver(solver),
-                           name=name,
-                           info=info)
+                           name=name)
 
     return optsetup
 
@@ -186,20 +184,18 @@ def singlesetupfactory(setup, *args):
 
     # This tuple can be unpacked directly into OptimModel
     SingleSetup = namedtuple('SingleSetup', 'signal storage objective '
-                                            'solver name info')
+                                            'solver name')
 
     objective = 'std0-3'
     solver = 'gurobi'
     name = 'Single Storage Optimization ' \
            '{}.{}.{}'.format(data, power, objective)
-    info = None
 
     optsetup = SingleSetup(signal=datafactory(data, NPOINTS),
                            storage=storagefactory(power + '.' + loss),
                            objective=objectivefactory(objective),
                            solver=Solver(solver),
-                           name=name,
-                           info=info)
+                           name=name)
 
     return optsetup
 

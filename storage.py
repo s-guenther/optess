@@ -33,7 +33,7 @@ class Storage:
         except TypeError:
             self._power = _Power(float(value[0]), float(value[1]))
         if self._power.min >= self._power.max:
-            raise ValueError('Min power lower equal max power')
+            raise ValueError('Min power lower or equal max power')
 
     @property
     def efficiency(self):
@@ -72,3 +72,12 @@ class Storage:
                       eff=self.efficiency,
                       selfdis=self.selfdischarge)
         return strfmt.format(**fields)
+
+    def __mul__(self, other):
+        """Lets a storage get multiplied by a scalar to scale the power"""
+        factor = float(other)
+        return Storage([self.power.min*factor, self.power.max*factor],
+                       self.efficiency, self.selfdischarge)
+
+    def __rmul__(self, other):
+        return self.__mul__(other)

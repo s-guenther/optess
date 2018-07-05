@@ -38,7 +38,7 @@ class AbstractOptimizeESS(ABC):
     """
     def __init__(self, signal=None, objective=None,
                  solver='gurobi',
-                 name='Storage Optimization', info=None):
+                 name='Storage Optimization'):
         self._signal = None
 
         self._objective = None
@@ -59,10 +59,6 @@ class AbstractOptimizeESS(ABC):
 
         self._builder = None
         self._first_stage = None
-        # info is the only variable which is not typechecked and can be
-        # freely modified. It can be used to store arbitrary userdata
-        # TODO of any use? could be monkey patched at any time...
-        self.info = info
 
     # The following properties reset the model and results if set
     @property
@@ -260,9 +256,9 @@ class OptimizeHybridESS(AbstractOptimizeESS):
 
     def __init__(self, signal=None, base=None, peak=None, objective=None,
                  strategy='inter', solver='gurobi',
-                 name='Hybrid Storage Optimization', info=None):
+                 name='Hybrid Storage Optimization'):
         super().__init__(signal=signal, objective=objective, solver=solver,
-                         name=name, info=info)
+                         name=name)
 
         self._base = None
         self._peak = None
@@ -334,10 +330,9 @@ class OptimizeSingleESS(AbstractOptimizeESS):
     """
 
     def __init__(self, signal=None, storage=None, objective=None,
-                 solver='gurobi', name='Single Storage Optimization',
-                 info=None):
+                 solver='gurobi', name='Single Storage Optimization'):
         super().__init__(signal=signal, objective=objective, solver=solver,
-                         name=name, info=info)
+                         name=name)
 
         self._storage = None
         self._builder = SingleBuilder()
