@@ -99,7 +99,7 @@ def objectivefactory(datatype):
         raise UnknownObjectiveError
 
 
-NPOINTS = 1760
+NPOINTS = 220
 
 
 def hybridsetupfactory(setup, *args):

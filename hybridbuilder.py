@@ -48,7 +48,7 @@ class HybridBuilder:
 
         return self.model
 
-    def build_2nd_stage(self):
+    def build_2nd_stage(self, multiplier=1e-1):
         self.model_2nd = deepcopy(self.model)
         model = self.model_2nd
 
@@ -69,8 +69,16 @@ class HybridBuilder:
 
         model.con_lockinter = pe.Constraint(model.ind, rule=lock_inter)
 
-        model.objexpr = sum(-model.baseminus[ii] - model.interminus[ii] for
-                            ii in model.ind)
+        # Define a monotonically incrasing vector which will be multiplied
+        # with interminus. This way, interstorage power flow becomes
+        # determined and unambiguous (hopefully)
+        monodec = [(3*model.ind.last() - ii)/3 for ii in model.ind]
+
+        model.objexpr = sum((-model.baseminus[ii]
+                             + (model.interplus[ii] -
+                                model.interminus[ii])
+                             - model.peakminus[ii]*multiplier)*monodec[ii]
+                            for ii in model.ind)
         model.del_component(model.obj)
         model.obj = pe.Objective(expr=model.objexpr)
 

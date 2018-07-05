@@ -3,6 +3,7 @@
 
 import pyomo.environ as pe
 from abc import ABC, abstractmethod
+import copy
 
 from hybridbuilder import HybridBuilder
 from singlebuilder import SingleBuilder
@@ -44,19 +45,20 @@ class AbstractOptimizeESS(ABC):
         self._solver = None
         self._name = None
 
-        self._model = [None, None]
-        self._results = [None, None]
-        self._solverstatus = [None, None]
+        self._model = None
+        self._results = None
+        self._solverstatus = None
 
         if signal is not None:
             self.signal = signal
         if objective is not None:
             self.objective = objective
 
-        self._builder = None
         self.solver = solver
         self.name = name
 
+        self._builder = None
+        self._first_stage = None
         # info is the only variable which is not typechecked and can be
         # freely modified. It can be used to store arbitrary userdata
         # TODO of any use? could be monkey patched at any time...
@@ -105,13 +107,13 @@ class AbstractOptimizeESS(ABC):
     # it is built; they are getonly
     @property
     def model(self):
-        if self._model[0] is None:
+        if self._model is None:
             self._build_1st_pyomo_model()
         return self._model
 
     @property
     def results(self):
-        if self._results[0] is None:
+        if self._results is None:
             self._solve_pyomo_model()
         return self._results
 
@@ -139,7 +141,7 @@ class AbstractOptimizeESS(ABC):
                 ax3 = None
 
         original_signal = self.signal
-        new_signal = self.signal - self.results[1].power
+        new_signal = self.signal - self.results.power
 
         original_signal.pplot(ax=ax1, color='black', linewidth=2)
         new_signal.pplot(ax=ax1, color='darkcyan', linewidth=2)
@@ -166,9 +168,9 @@ class AbstractOptimizeESS(ABC):
         ax1.set_ylabel('Input Signal')
 
         if ax2 and ax3:
-            self.results[1].pplot(ax=(ax2, ax3))
+            self.results.pplot(ax=(ax2, ax3))
         elif ax2 and not ax3:
-            self.results[1].pplot(ax=ax2)
+            self.results.pplot(ax=ax2)
 
     # def __repr__(self):
     #     """Return verbose string describing object"""
@@ -179,9 +181,10 @@ class AbstractOptimizeESS(ABC):
     def _modified(self):
         """Automatically called if signal, base, peak, strategy or objective
         is changed. This resets model and results variable"""
-        self._model = [None, None]
-        self._results = [None, None]
-        self._solverstatus = [None, None]
+        self._model = None
+        self._results = None
+        self._solverstatus = None
+        self._first_stage = None
 
     def _build_1st_pyomo_model(self):
         """Create a Pyomo Model, save it internally"""
@@ -189,38 +192,40 @@ class AbstractOptimizeESS(ABC):
             model_1st = self._build_1st_stage()
         else:
             raise DataIsNotCompletelyDefinedError()
-        self._model[0] = model_1st
+        self._model = model_1st
 
     def _build_2nd_pyomo_model(self):
-        if self.model[0]:
+        if self.model:
             model_2nd = self._build_2nd_stage()
         else:
             raise NoFirstStageCalculatedError()
-        self.model[1] = model_2nd
+        self._model = model_2nd
 
     def _solve_pyomo_model(self):
         """Solve the pyomo model, build it if neccessary, save internally"""
-        # TODO separate object passed in init
         solver = pe.SolverFactory(self.solver.name)
-        res = solver.solve(self.model[0])
-        self._solverstatus[0] = res
+        res = solver.solve(self.model)
+        self._solverstatus = res
         # TODO implement better validity checking
         valid = res['Solver'][0]['Status'].key == 'ok'
         if valid:
-            self._results[0] = self._extract_results(self.model[0],
-                                                     self.signal)
+            self._results = self._extract_results(self.model,
+                                                  self.signal)
+            # Save complete object in ._first_stage
+            first_stage = copy.copy(self)
+            self._first_stage = first_stage
             # Build and calculate 2nd model
             self._build_2nd_pyomo_model()
-            res_2nd = solver.solve(self.model[1])
-            self._solverstatus[1] = res_2nd
+            res_2nd = solver.solve(self.model)
+            self._solverstatus = res_2nd
             valid_2nd = res_2nd['Solver'][0]['Status'].key == 'ok'
             if valid_2nd:
-                self._results[1] = self._extract_results(self.model[1],
-                                                         self.signal)
+                self._results = self._extract_results(self.model,
+                                                      self.signal)
             else:
-                self._results[1] = NoResults()
+                self._results = NoResults()
         else:
-            self._results = [NoResults()]*2
+            self._results = NoResults()
 
     @abstractmethod
     def _is_completely_defined(self):
