@@ -72,12 +72,12 @@ class HybridBuilder:
         # Define a monotonically incrasing vector which will be multiplied
         # with interminus. This way, interstorage power flow becomes
         # determined and unambiguous (hopefully)
-        monodec = [(3*model.ind.last() - ii)/3 for ii in model.ind]
+        monoinc = [(3*model.ind.last() + ii)/3 for ii in model.ind]
 
         model.objexpr = sum((-model.baseminus[ii]
                              + (model.interplus[ii] -
                                 model.interminus[ii])
-                             - model.peakminus[ii]*multiplier)*monodec[ii]
+                             - model.peakminus[ii]*multiplier)*monoinc[ii]
                             for ii in model.ind)
         model.del_component(model.obj)
         model.obj = pe.Objective(expr=model.objexpr)
@@ -164,10 +164,10 @@ class HybridBuilder:
         model = self.model
 
         def cutting_low(mod, ii):
-            return signal[ii] - (mod.base[ii] + mod.peak[ii]) >= minpower
+            return signal[ii] + (mod.base[ii] + mod.peak[ii]) >= minpower
 
         def cutting_high(mod, ii):
-            return signal[ii] - (mod.base[ii] + mod.peak[ii]) <= maxpower
+            return signal[ii] + (mod.base[ii] + mod.peak[ii]) <= maxpower
 
         model.con_cutting_low = pe.Constraint(model.ind, rule=cutting_low)
         model.con_cutting_high = pe.Constraint(model.ind, rule=cutting_high)

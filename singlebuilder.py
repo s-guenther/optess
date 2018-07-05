@@ -109,10 +109,10 @@ class SingleBuilder:
         model = self.model
 
         def cutting_low(mod, ii):
-            return signal[ii] - mod.power[ii] >= minpower
+            return signal[ii] + mod.power[ii] >= minpower
 
         def cutting_high(mod, ii):
-            return signal[ii] - mod.power[ii] <= maxpower
+            return signal[ii] + mod.power[ii] <= maxpower
 
         model.con_cutting_low = pe.Constraint(model.ind, rule=cutting_low)
         model.con_cutting_high = pe.Constraint(model.ind, rule=cutting_high)

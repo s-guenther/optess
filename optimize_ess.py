@@ -141,7 +141,7 @@ class AbstractOptimizeESS(ABC):
                 ax3 = None
 
         original_signal = self.signal
-        new_signal = self.signal - self.results.power
+        new_signal = self.signal + self.results.power
 
         original_signal.pplot(ax=ax1, color='black', linewidth=2)
         new_signal.pplot(ax=ax1, color='darkcyan', linewidth=2)
