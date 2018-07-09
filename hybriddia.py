@@ -80,31 +80,54 @@ class HybridDia:
         if not self.inter or not self.nointer:
             self.calculate_curves()
 
-        # TODO remove duplicate code
+        # TODO remove duplicate code, refactor
         cutsinter = [0]
         inter = [0]
+        cyclesinter = [(1, 1)]
         for cut in sorted(self.inter.keys()):
             cutsinter.append(cut)
             optim_case = self.inter[cut]
             inter.append(optim_case.results.baseenergycapacity)
+            cyclesinter.append(self._get_cycles(optim_case))
         cutsinter.append(1)
         inter.append(self.single.results.energycapacity)
+        cyclesinter.append((1, 1))
 
         cutsnointer = [0]
         nointer = [0]
+        cyclesnointer = [(1, 1)]
         for cut in sorted(self.nointer.keys()):
             cutsnointer.append(cut)
             optim_case = self.nointer[cut]
             nointer.append(optim_case.results.baseenergycapacity)
+            cyclesnointer.append(self._get_cycles(optim_case))
         cutsnointer.append(1)
         nointer.append(self.single.results.energycapacity)
+        cyclesnointer.append((1, 1))
 
         ax = plt.figure().add_subplot(1, 1, 1)
         ax.plot([0, self.single.results.energycapacity], [0, 1])
         ax.plot(nointer, cutsnointer, linestyle='--')
         ax.plot(inter, cutsinter)
+
+        for x, y, cycles in zip(nointer, cutsnointer, cyclesnointer):
+            ax.text(x, y, '{:.2f}, {:.2f}'.format(*cycles),
+                    HorizontalAlignment='right', VerticalAlignment='bottom')
+        for x, y, cycles in zip(inter, cutsinter, cyclesinter):
+            ax.text(x, y, '{:.2f}, {:.2f}'.format(*cycles),
+                    HorizontalAlignment='left', VerticalAlignment='top')
+
         ax.set_ylabel('Cut')
         ax.set_xlabel('Energy')
         ax.autoscale(tight=True)
+
+    @staticmethod
+    def _get_cycles(optim_case):
+        """Returns base and peak cycles as tuple"""
+        energybase = optim_case.results.baseenergycapacity
+        energypeak = optim_case.results.peakenergycapacity
+        basepower = optim_case.results.base + optim_case.results.baseinter
+        peakpower = optim_case.results.peak + optim_case.results.peakinter
+        return basepower.cycles(energybase), peakpower.cycles(energypeak)
 
 # TODO __repr__

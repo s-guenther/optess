@@ -2,6 +2,7 @@
 
 import operator
 from overload import overload
+from numpy import cumsum
 from matplotlib import pyplot as plt
 
 from utility import make_empty_axes
@@ -44,6 +45,30 @@ class Signal:
     @property
     def dtimes(self):
         return self._dtimes
+
+    def integrate(self, int_constant=0):
+        """Integrates the signal and returns the integral as a new signal."""
+        energy_chunks = [val*dt for val, dt in zip(self.vals, self.dtimes)]
+        energies = list(cumsum(energy_chunks) + int_constant)
+        return Signal(self.times, energies)
+
+    def cycles(self, capacity=None):
+        """Calculates the equivalent cycle load (discharged energy divided
+        by capacity. If capacity is not provided, it is estimated from
+        signal itself. Note that this is a approximation and note that the
+        cycle parameter is only useful for a certain class of signals."""
+        def discharged(signal):
+            neg_parts = signal*(signal <= 0)
+            return min(neg_parts.integrate().vals)
+
+        def capacity_from_signal(signal):
+            integral = signal.integrate()
+            return max(integral.vals) - min(integral.vals)
+
+        dis = -discharged(self)
+        cap = capacity if capacity else capacity_from_signal(self)
+
+        return dis/cap
 
     def pplot(self, plotfcn='step', ax=None, **kwargs):
         ax = ax if ax else make_empty_axes()

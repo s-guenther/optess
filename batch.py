@@ -11,7 +11,8 @@ from hybriddia import HybridDia
 import timeit
 
 signal = datafactory('alt', 110)
-storage = Storage(2, 0.95, 0.01)
+# storage = Storage(2, 0.95, 0.01)
+storage = Storage(2, 1, 0)
 objective = objectivefactory('std0-3')
 
 # start = timeit.default_timer()
