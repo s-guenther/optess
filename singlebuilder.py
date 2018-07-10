@@ -18,7 +18,7 @@ class SingleBuilder:
         self.model_2nd = None
 
     # noinspection PyArgumentList
-    def build_1st_stage(self, signal, storage, objective,
+    def minimize_energy(self, signal, storage, objective,
                         name='Single ESS Model, 1st Dimensioning Stage'):
         self.signal = Signal(signal)
         self.storage = Storage(storage)
@@ -38,7 +38,7 @@ class SingleBuilder:
 
         return self.model
 
-    def build_2nd_stage(self, name='Single ESS Model, '
+    def minimize_cycles(self, name='Single ESS Model, '
                                    '2nd Quadratic Minimizing Stage'):
         self.model_2nd = deepcopy(self.model)
         model = self.model_2nd
@@ -51,7 +51,7 @@ class SingleBuilder:
             pe.Constraint(expr=model.energycapacity == storagedim)
 
         # Add quadratic minimizing expression
-        model.objexpr = sum(model.powerplus[ii]**2 + model.powerminus[ii]**2
+        model.objexpr = sum(model.powerplus[ii] + model.powerminus[ii]
                             for ii in model.ind)
         model.del_component(model.obj)
         model.obj = pe.Objective(expr=model.objexpr)
@@ -59,7 +59,7 @@ class SingleBuilder:
         return model
 
     def build(self, signal, storage, objective, name='Single ESS Model'):
-        return self.build_1st_stage(signal, storage, objective, name)
+        return self.minimize_energy(signal, storage, objective, name)
 
     def _add_vars(self):
         """Defines all Variables of the optimization model"""

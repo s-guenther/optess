@@ -45,7 +45,7 @@ class HybridDia:
         self.area = dict()
         self.name = str(name)
 
-        self.powercapacity = self.single.results.powercapacity
+        self.powercapacity = self.storage.power.max
         self.energycapacity = self.single.results.energycapacity
 
     def calculate_single(self):
@@ -113,7 +113,7 @@ class HybridDia:
             return False
 
         # Interpolate Hybridisation Curve with given points
-        hcuts = [sorted(self.inter.keys())]
+        hcuts = sorted(self.inter.keys())
         henergies = [self.inter[hcut] for hcut in hcuts]
         hcurve = interp.interp1d(hcuts, henergies, 'linear')
 
@@ -126,6 +126,7 @@ class HybridDia:
         """The optimisation problem is solved for this point defined by
         power and energy."""
         # TODO implement
+        pass
 
     def pprint(self):
         # TODO implement
@@ -134,8 +135,8 @@ class HybridDia:
     def pplot(self):
         if not self.inter or not self.nointer:
             self.calculate_curves()
-        if not self.area:
-            self.calculate_area()
+        # if not self.area:
+        #     self.calculate_area()
 
         # TODO remove duplicate code, refactor
         cutsinter = [0]

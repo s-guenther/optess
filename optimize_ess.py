@@ -58,7 +58,6 @@ class AbstractOptimizeESS(ABC):
         self.name = name
 
         self._builder = None
-        self._first_stage = None
 
     # The following properties reset the model and results if set
     @property
@@ -104,7 +103,7 @@ class AbstractOptimizeESS(ABC):
     @property
     def model(self):
         if self._model is None:
-            self._build_1st_pyomo_model()
+            self._model = self._build()
         return self._model
 
     @property
@@ -148,6 +147,7 @@ class AbstractOptimizeESS(ABC):
         for ii in range(1, len(bool_ge)):
             if bool_ge[ii] and not bool_ge[ii-1]:
                 bool_ge[ii-1] = True
+        # noinspection PyUnresolvedReferences
         bool_le = (original_signal <= new_signal).vals
         bool_le = [bool(val) for val in bool_le]
         # this compensates a bug in fill_between to not draw the first element
@@ -182,46 +182,17 @@ class AbstractOptimizeESS(ABC):
         self._solverstatus = None
         self._first_stage = None
 
-    def _build_1st_pyomo_model(self):
+    def _build_pyomo_model(self):
         """Create a Pyomo Model, save it internally"""
         if self._is_completely_defined():
-            model_1st = self._build_1st_stage()
+            model = self._build()
         else:
             raise DataIsNotCompletelyDefinedError()
-        self._model = model_1st
+        self._model = model
 
-    def _build_2nd_pyomo_model(self):
-        if self.model:
-            model_2nd = self._build_2nd_stage()
-        else:
-            raise NoFirstStageCalculatedError()
-        self._model = model_2nd
-
+    @abstractmethod
     def solve_pyomo_model(self):
-        """Solve the pyomo model, build it if neccessary, save internally"""
-        solver = pe.SolverFactory(self.solver.name)
-        res = solver.solve(self.model)
-        self._solverstatus = res
-        # TODO implement better validity checking
-        valid = res['Solver'][0]['Status'].key == 'ok'
-        if valid:
-            self._results = self._extract_results(self.model,
-                                                  self.signal)
-            # Save complete object in ._first_stage
-            first_stage = copy.copy(self)
-            self._first_stage = first_stage
-            # Build and calculate 2nd model
-            self._build_2nd_pyomo_model()
-            res_2nd = solver.solve(self.model)
-            self._solverstatus = res_2nd
-            valid_2nd = res_2nd['Solver'][0]['Status'].key == 'ok'
-            if valid_2nd:
-                self._results = self._extract_results(self.model,
-                                                      self.signal)
-            else:
-                self._results = NoResults()
-        else:
-            self._results = NoResults()
+        pass
 
     @abstractmethod
     def _is_completely_defined(self):
@@ -229,11 +200,7 @@ class AbstractOptimizeESS(ABC):
 
     # GoF Strategy Pattern, delegate call to Subclasses
     @abstractmethod
-    def _build_1st_stage(self):
-        pass
-
-    @abstractmethod
-    def _build_2nd_stage(self):
+    def _build(self):
         pass
 
     # GoF Strategy Pattern, delegate call to Subclasses
@@ -272,6 +239,7 @@ class OptimizeHybridESS(AbstractOptimizeESS):
         self.strategy = strategy
 
         self._builder = HybridBuilder()
+        self._first_stage = None
 
     # The following properties reset the model and results if set
     @property
@@ -303,15 +271,52 @@ class OptimizeHybridESS(AbstractOptimizeESS):
         self._strategy = Strategy(val)
         self._modified()
 
+    def solve_pyomo_model(self):
+        """Solve the pyomo model, build it if neccessary, save internally"""
+        solver = pe.SolverFactory(self.solver.name)
+        res = solver.solve(self.model)
+        self._solverstatus = res
+        # TODO implement better validity checking
+        valid = res['Solver'][0]['Status'].key == 'ok'
+        if valid:
+            self._results = self._extract_results(self.model,
+                                                  self.signal)
+            # Save complete object in ._first_stage
+            first_stage = copy.copy(self)
+            self._first_stage = first_stage
+            # Build and calculate 2nd model
+            self._build_2nd_pyomo_model()
+            res_2nd = solver.solve(self.model)
+            self._solverstatus = res_2nd
+            valid_2nd = res_2nd['Solver'][0]['Status'].key == 'ok'
+            if valid_2nd:
+                self._results = self._extract_results(self.model,
+                                                      self.signal)
+            else:
+                self._results = NoResults()
+        else:
+            self._results = NoResults()
+
     def _is_completely_defined(self):
         return all([self.signal, self.base, self.peak, self.objective])
 
-    def _build_1st_stage(self):
-        return self._builder.build_1st_stage(self.signal, self.base, self.peak,
+    def _modified(self):
+        super()._modified()
+        self._first_stage = None
+
+    def _build(self):
+        return self._builder.minimize_energy(self.signal, self.base, self.peak,
                                              self.objective, self.strategy)
 
+    def _build_2nd_pyomo_model(self):
+        if self.model:
+            model_2nd = self._build_2nd_stage()
+        else:
+            raise NoFirstStageCalculatedError()
+        self._model = model_2nd
+
     def _build_2nd_stage(self):
-        return self._builder.build_2nd_stage()
+        return self._builder.minimize_cycles()
 
     @staticmethod
     def _extract_results(model, signal):
@@ -354,13 +359,24 @@ class OptimizeSingleESS(AbstractOptimizeESS):
     def _is_completely_defined(self):
         return all([self.signal, self.storage, self.objective])
 
+    def solve_pyomo_model(self):
+        """Solve the pyomo model, build it if neccessary, save internally"""
+        solver = pe.SolverFactory(self.solver.name)
+        model = self.model
+        res = solver.solve(self.model)
+        self._solverstatus = res
+        # TODO implement better validity checking
+        valid = res['Solver'][0]['Status'].key == 'ok'
+        if valid:
+            self._results = self._extract_results(self.model,
+                                                  self.signal)
+        else:
+            self._results = NoResults()
+
     @staticmethod
     def _extract_results(model, signal):
         return SingleResults(model, signal)
 
-    def _build_1st_stage(self):
-        return self._builder.build_1st_stage(self.signal, self.storage,
+    def _build(self):
+        return self._builder.minimize_energy(self.signal, self.storage,
                                              self.objective)
-
-    def _build_2nd_stage(self):
-        return self._builder.build_2nd_stage()

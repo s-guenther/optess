@@ -21,7 +21,7 @@ class HybridBuilder:
         self.model_2nd = None
 
     # noinspection PyArgumentList
-    def build_1st_stage(self, signal, base, peak, objective,
+    def minimize_energy(self, signal, base, peak, objective,
                         strategy=Strategy.inter, name='Hybrid EES Model'):
         self.signal = Signal(signal)
         self.base = Storage(base)
@@ -48,19 +48,22 @@ class HybridBuilder:
 
         return self.model
 
-    def build_2nd_stage(self, basedim=None, peakdim=None, multiplier=1e-1):
+    def minimize_cycles(self, baseenergy=None, peakenergy=None,
+                        multiplier=1e-1, name='Hybrid EES Model Cycle '
+                                              'Minimization'):
         self.model_2nd = deepcopy(self.model)
         model = self.model_2nd
+        model.name = name
 
         # Fix previously determined base and peak energy capacity
-        if not basedim:
-            basedim = list(model.baseenergycapacity.get_values().values())[0]
-        if not peakdim:
-            peakdim = list(model.peakenergycapacity.get_values().values())[0]
+        if not baseenergy:
+            baseenergy = list(model.baseenergycapacity.get_values().values())[0]
+        if not peakenergy:
+            peakenergy = list(model.peakenergycapacity.get_values().values())[0]
         self.model_2nd.con_lock_baseenergy_capacity = \
-            pe.Constraint(expr=model.baseenergycapacity == basedim)
+            pe.Constraint(expr=model.baseenergycapacity == baseenergy)
         self.model_2nd.con_lock_peakenergy_capacity = \
-            pe.Constraint(expr=model.peakenergycapacity == peakdim)
+            pe.Constraint(expr=model.peakenergycapacity == peakenergy)
 
         # Add quadratic minimizing expression
         model.interplus = pe.Var(model.ind, bounds=(0, None))
@@ -87,7 +90,7 @@ class HybridBuilder:
         return model
 
     def build(self, signal, base, peak, objective, strategy, name):
-        return self.build_1st_stage(signal, base, peak,
+        return self.minimize_energy(signal, base, peak,
                                     objective, strategy, name)
 
     def _add_vars(self):
