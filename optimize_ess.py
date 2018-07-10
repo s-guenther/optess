@@ -110,7 +110,7 @@ class AbstractOptimizeESS(ABC):
     @property
     def results(self):
         if self._results is None:
-            self._solve_pyomo_model()
+            self.solve_pyomo_model()
         return self._results
 
     # Define convenience functions for output
@@ -197,7 +197,7 @@ class AbstractOptimizeESS(ABC):
             raise NoFirstStageCalculatedError()
         self._model = model_2nd
 
-    def _solve_pyomo_model(self):
+    def solve_pyomo_model(self):
         """Solve the pyomo model, build it if neccessary, save internally"""
         solver = pe.SolverFactory(self.solver.name)
         res = solver.solve(self.model)

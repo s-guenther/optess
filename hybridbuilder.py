@@ -48,13 +48,15 @@ class HybridBuilder:
 
         return self.model
 
-    def build_2nd_stage(self, multiplier=1e-1):
+    def build_2nd_stage(self, basedim=None, peakdim=None, multiplier=1e-1):
         self.model_2nd = deepcopy(self.model)
         model = self.model_2nd
 
         # Fix previously determined base and peak energy capacity
-        basedim = list(model.baseenergycapacity.get_values().values())[0]
-        peakdim = list(model.peakenergycapacity.get_values().values())[0]
+        if not basedim:
+            basedim = list(model.baseenergycapacity.get_values().values())[0]
+        if not peakdim:
+            peakdim = list(model.peakenergycapacity.get_values().values())[0]
         self.model_2nd.con_lock_baseenergy_capacity = \
             pe.Constraint(expr=model.baseenergycapacity == basedim)
         self.model_2nd.con_lock_peakenergy_capacity = \

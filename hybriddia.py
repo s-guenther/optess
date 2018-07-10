@@ -1,11 +1,21 @@
 #!/usr/bin/env python3
 
+import itertools
+import scipy.interpolate as interp
+from numpy import linspace
+
 from optimize_ess import OptimizeSingleESS, OptimizeHybridESS
 from powersignal import Signal
 from storage import Storage
 from objective import Objective, Solver
 from matplotlib import pyplot as plt
 from collections import defaultdict
+
+
+class PointOutsideAreaError(ValueError):
+    """Raised if a point within the Hybridisation Area shall be calculated,
+    but the point is outside"""
+    pass
 
 
 class OnTheFlyDict(defaultdict):
@@ -29,16 +39,18 @@ class HybridDia:
         self.storage = Storage(singlestorage)
         self.objective = Objective(objective)
         self.solver = Solver(solver)
-        self.single = None
+        self.single = self.calculate_single()
         self.inter = OnTheFlyDict(self, 'inter')
         self.nointer = OnTheFlyDict(self, 'nointer')
+        self.area = dict()
         self.name = str(name)
 
-    def calculate_single(self, add_to_internal_list=True):
+        self.powercapacity = self.single.results.powercapacity
+        self.energycapacity = self.single.results.energycapacity
+
+    def calculate_single(self):
         single = OptimizeSingleESS(self.signal, self.storage,
                                    self.objective, self.solver)
-        if add_to_internal_list:
-            self.single = single
         return single
 
     def calculate_cut(self, cut, strategy='inter', add_to_internal_list=True):
@@ -50,6 +62,7 @@ class HybridDia:
 
         optim_case = OptimizeHybridESS(signal, base, peak, objective,
                                        strategy, solver)
+        optim_case.solve_pyomo_model()
 
         if add_to_internal_list:
             if strategy == 'inter':
@@ -58,12 +71,7 @@ class HybridDia:
                 self.nointer[cut] = optim_case
         return optim_case
 
-    def calculate_curves(self, cuts=None):
-        if cuts is None:
-            cuts = [0.1, 0.25, 0.4, 0.6, 0.9]
-
-        if not self.single:
-            self.calculate_single()
+    def calculate_curves(self, cuts=(0.1, 0.25, 0.4, 0.6, 0.9)):
 
         for cut in cuts:
             # TODO parallelize this code
@@ -72,6 +80,53 @@ class HybridDia:
             self.calculate_cut(cut, 'nointer')
             print('Ending cut={}'.format(cut))
 
+    def calculate_area(self, raster=(7, 7)):
+        """Calculates points within the hybridisation area to determine the
+        cycle map, raster describes the number of number of points that will
+        be generated in power and energy direction"""
+
+        if not self.inter:
+            self.calculate_curves()
+
+        powercap = self.powercapacity
+        energycap = self.energycapacity
+
+        def raster_vector(npoints):
+            return linspace(1/(npoints+2), (npoints+1)/npoints+2, npoints)
+
+        powers = raster_vector(raster[0])*powercap
+        energies = raster_vector(raster[1])*energycap
+
+        # TODO parallelize this code
+        for point in itertools.product(powers, energies):
+            if self.is_point_in_area(*point):
+                self.calculate_point(*point)
+
+    def is_point_in_area(self, energy, power):
+        """Return True if a point is within the hybridisation area."""
+        if not self.inter:
+            self.calculate_curves()
+
+        powercap = self.powercapacity
+        cut = power/powercap
+        if cut < 0 or cut > 1:
+            return False
+
+        # Interpolate Hybridisation Curve with given points
+        hcuts = [sorted(self.inter.keys())]
+        henergies = [self.inter[hcut] for hcut in hcuts]
+        hcurve = interp.interp1d(hcuts, henergies, 'linear')
+
+        minenergy = energy*cut  # left side of area at specified cut
+        maxenergy = hcurve(cut)  # right side of area at specified cut
+
+        return minenergy < energy < maxenergy
+
+    def calculate_point(self, power, energy):
+        """The optimisation problem is solved for this point defined by
+        power and energy."""
+        # TODO implement
+
     def pprint(self):
         # TODO implement
         pass
@@ -79,6 +134,8 @@ class HybridDia:
     def pplot(self):
         if not self.inter or not self.nointer:
             self.calculate_curves()
+        if not self.area:
+            self.calculate_area()
 
         # TODO remove duplicate code, refactor
         cutsinter = [0]
@@ -90,7 +147,7 @@ class HybridDia:
             inter.append(optim_case.results.baseenergycapacity)
             cyclesinter.append(self._get_cycles(optim_case))
         cutsinter.append(1)
-        inter.append(self.single.results.energycapacity)
+        inter.append(self.energycapacity)
         cyclesinter.append((1, 1))
 
         cutsnointer = [0]
@@ -102,11 +159,11 @@ class HybridDia:
             nointer.append(optim_case.results.baseenergycapacity)
             cyclesnointer.append(self._get_cycles(optim_case))
         cutsnointer.append(1)
-        nointer.append(self.single.results.energycapacity)
+        nointer.append(self.energycapacity)
         cyclesnointer.append((1, 1))
 
         ax = plt.figure().add_subplot(1, 1, 1)
-        ax.plot([0, self.single.results.energycapacity], [0, 1])
+        ax.plot([0, self.energycapacity], [0, 1])
         ax.plot(nointer, cutsnointer, linestyle='--')
         ax.plot(inter, cutsinter)
 
