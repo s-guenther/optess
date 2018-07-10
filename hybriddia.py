@@ -71,7 +71,7 @@ class HybridDia:
                 self.nointer[cut] = optim_case
         return optim_case
 
-    def calculate_curves(self, cuts=(0.1, 0.25, 0.4, 0.6, 0.9)):
+    def calculate_curves(self, cuts=(0.2, 0.4, 0.5, 0.6, 0.8)):
 
         for cut in cuts:
             # TODO parallelize this code

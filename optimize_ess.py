@@ -271,29 +271,29 @@ class OptimizeHybridESS(AbstractOptimizeESS):
         self._strategy = Strategy(val)
         self._modified()
 
-    def solve_pyomo_model(self):
-        """Solve the pyomo model, build it if neccessary, save internally"""
+    def solve_pyomo_model(self, baseenergy=None, peakenergy=None):
         solver = pe.SolverFactory(self.solver.name)
-        res = solver.solve(self.model)
-        self._solverstatus = res
-        # TODO implement better validity checking
-        valid = res['Solver'][0]['Status'].key == 'ok'
-        if valid:
-            self._results = self._extract_results(self.model,
-                                                  self.signal)
-            # Save complete object in ._first_stage
-            first_stage = copy.copy(self)
-            self._first_stage = first_stage
-            # Build and calculate 2nd model
-            self._build_2nd_pyomo_model()
-            res_2nd = solver.solve(self.model)
-            self._solverstatus = res_2nd
-            valid_2nd = res_2nd['Solver'][0]['Status'].key == 'ok'
-            if valid_2nd:
-                self._results = self._extract_results(self.model,
-                                                      self.signal)
+        # If no dimensions are provided, then solve the model for the first
+        # time and extract dimensions from the solution
+        if baseenergy is None or peakenergy is None:
+            self._solverstatus = solver.solve(self.model)
+            valid = self._solverstatus['Solver'][0]['Status'].key == 'ok'
+            if valid:
+                self._results = self._extract_results(self.model, self.signal)
             else:
                 self._results = NoResults()
+                return
+            first_stage = copy.copy(self)
+            self._first_stage = first_stage
+            baseenergy = self.results.baseenergycapacity
+            peakenergy = self.results.peakenergycapacity
+
+        # Then, build and solve second stage
+        self._build_2nd_pyomo_model(baseenergy, peakenergy)
+        self._solverstatus = solver.solve(self.model)
+        valid = self._solverstatus['Solver'][0]['Status'].key == 'ok'
+        if valid:
+            self._results = self._extract_results(self.model, self.signal)
         else:
             self._results = NoResults()
 
@@ -308,9 +308,9 @@ class OptimizeHybridESS(AbstractOptimizeESS):
         return self._builder.minimize_energy(self.signal, self.base, self.peak,
                                              self.objective, self.strategy)
 
-    def _build_2nd_pyomo_model(self):
+    def _build_2nd_pyomo_model(self, baseenergy, peakenergy):
         if self.model:
-            model_2nd = self._build_2nd_stage()
+            model_2nd = self._builder.minimize_cycles(baseenergy, peakenergy)
         else:
             raise NoFirstStageCalculatedError()
         self._model = model_2nd
@@ -363,7 +363,7 @@ class OptimizeSingleESS(AbstractOptimizeESS):
         """Solve the pyomo model, build it if neccessary, save internally"""
         solver = pe.SolverFactory(self.solver.name)
         model = self.model
-        res = solver.solve(self.model)
+        res = solver.solve(model)
         self._solverstatus = res
         # TODO implement better validity checking
         valid = res['Solver'][0]['Status'].key == 'ok'
