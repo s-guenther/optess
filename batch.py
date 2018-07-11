@@ -29,8 +29,12 @@ objective = objectivefactory('std0-3')
 # end = timeit.default_timer() - start
 # print('SESS Calculation went for {} seconds'.format(end))
 
+start = timeit.default_timer()
 dia = HybridDia(signal, storage, objective)
-dia.calculate_curves()
+dia.calculate_curves(cuts=(1e-2, 0.4, 0.6, 1-1e-2))
+dia.calculate_area()
+end = timeit.default_timer() - start
+print('Hybrid Dia Calculation went for {} seconds'.format(end))
 dia.pplot()
 
 a = 'asdf'

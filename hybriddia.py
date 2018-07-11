@@ -72,7 +72,6 @@ class HybridDia:
         return optim_case
 
     def calculate_curves(self, cuts=(0.2, 0.4, 0.5, 0.6, 0.8)):
-
         for cut in cuts:
             # TODO parallelize this code
             print('Starting cut={}'.format(cut))
@@ -92,14 +91,15 @@ class HybridDia:
         energycap = self.energycapacity
 
         def raster_vector(npoints):
-            return linspace(1/(npoints+2), (npoints+1)/npoints+2, npoints)
+            return linspace(1/(npoints+2), (npoints+1)/(npoints+2), npoints)
 
         powers = raster_vector(raster[0])*powercap
         energies = raster_vector(raster[1])*energycap
 
         # TODO parallelize this code
-        for point in itertools.product(powers, energies):
+        for point in itertools.product(energies, powers):
             if self.is_point_in_area(*point):
+                print('Calculating area point {}'.format(point))
                 self.calculate_point(*point)
 
     def is_point_in_area(self, energy, power):
@@ -114,19 +114,29 @@ class HybridDia:
 
         # Interpolate Hybridisation Curve with given points
         hcuts = sorted(self.inter.keys())
-        henergies = [self.inter[hcut] for hcut in hcuts]
+        henergies = [self.inter[hcut].results.baseenergycapacity
+                     for hcut in hcuts]
         hcurve = interp.interp1d(hcuts, henergies, 'linear')
 
-        minenergy = energy*cut  # left side of area at specified cut
+        minenergy = self.energycapacity*cut  # left side of area at spec. cut
         maxenergy = hcurve(cut)  # right side of area at specified cut
 
-        return minenergy < energy < maxenergy
+        return minenergy <= energy <= maxenergy
 
-    def calculate_point(self, power, energy):
+    def calculate_point(self, energy, power):
         """The optimisation problem is solved for this point defined by
         power and energy."""
-        # TODO implement
-        pass
+        cut = power/self.powercapacity
+        base = cut*self.storage
+        peak = (1-cut)*self.storage
+        optim_case = OptimizeHybridESS(self.signal, base, peak,
+                                       self.objective, solver=self.solver)
+
+        baseenergy = energy
+        peakenergy = self.energycapacity - energy
+        optim_case.solve_pyomo_model(baseenergy, peakenergy)
+
+        self.area[(power, energy)] = optim_case
 
     def pprint(self):
         # TODO implement
@@ -139,43 +149,43 @@ class HybridDia:
         #     self.calculate_area()
 
         # TODO remove duplicate code, refactor
-        cutsinter = [0]
-        inter = [0]
-        cyclesinter = [(1, 1)]
+        powerinter = []
+        inter = []
+        cyclesinter = []
         for cut in sorted(self.inter.keys()):
-            cutsinter.append(cut)
+            powerinter.append(cut*self.powercapacity)
             optim_case = self.inter[cut]
             inter.append(optim_case.results.baseenergycapacity)
             cyclesinter.append(self._get_cycles(optim_case))
-        cutsinter.append(1)
-        inter.append(self.energycapacity)
-        cyclesinter.append((1, 1))
 
-        cutsnointer = [0]
-        nointer = [0]
-        cyclesnointer = [(1, 1)]
+        powernointer = []
+        nointer = []
+        cyclesnointer = []
         for cut in sorted(self.nointer.keys()):
-            cutsnointer.append(cut)
+            powernointer.append(cut*self.powercapacity)
             optim_case = self.nointer[cut]
             nointer.append(optim_case.results.baseenergycapacity)
             cyclesnointer.append(self._get_cycles(optim_case))
-        cutsnointer.append(1)
-        nointer.append(self.energycapacity)
-        cyclesnointer.append((1, 1))
 
         ax = plt.figure().add_subplot(1, 1, 1)
-        ax.plot([0, self.energycapacity], [0, 1])
-        ax.plot(nointer, cutsnointer, linestyle='--')
-        ax.plot(inter, cutsinter)
+        ax.plot([0, self.energycapacity], [0, self.powercapacity])
+        ax.plot(nointer, powernointer, linestyle='--')
+        ax.plot(inter, powerinter)
 
-        for x, y, cycles in zip(nointer, cutsnointer, cyclesnointer):
+        for x, y, cycles in zip(nointer, powernointer, cyclesnointer):
             ax.text(x, y, '{:.2f}, {:.2f}'.format(*cycles),
                     HorizontalAlignment='right', VerticalAlignment='bottom')
-        for x, y, cycles in zip(inter, cutsinter, cyclesinter):
+        for x, y, cycles in zip(inter, powerinter, cyclesinter):
             ax.text(x, y, '{:.2f}, {:.2f}'.format(*cycles),
                     HorizontalAlignment='left', VerticalAlignment='top')
+        for (y, x), opt_case in self.area.items():
+            cbase, cpeak = self._get_cycles(opt_case)
+            ax.text(x, y, '{:.2f}'.format(cbase),
+                    color='blue', VerticalAlignment='top')
+            ax.text(x, y, '{:.2f}'.format(cpeak),
+                    color='red', VerticalAlignment='bottom')
 
-        ax.set_ylabel('Cut')
+        ax.set_ylabel('Power')
         ax.set_xlabel('Energy')
         ax.autoscale(tight=True)
 

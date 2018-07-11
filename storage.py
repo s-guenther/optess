@@ -32,8 +32,8 @@ class Storage:
             self._power = _Power(-float(value), float(value))
         except TypeError:
             self._power = _Power(float(value[0]), float(value[1]))
-        if self._power.min >= self._power.max:
-            raise ValueError('Min power lower or equal max power')
+        if self._power.min > self._power.max:
+            raise ValueError('Min power lower max power')
 
     @property
     def efficiency(self):
