@@ -4,15 +4,16 @@ Loads a predefined factory setup, feeds optimization class and prints some
 outputs.
 """
 
-from factories import hybridsetupfactory, singlesetupfactory, datafactory, objectivefactory
-from optimize_ess import OptimizeHybridESS, OptimizeSingleESS
+from factories import hybridsetupfactory, singlesetupfactory,\
+                      datafactory, objectivefactory
+# from optimize_ess import OptimizeHybridESS, OptimizeSingleESS
 from storage import Storage
 from hybriddia import HybridDia
 import timeit
 
-signal = datafactory('alt', 110)
+signal = datafactory('alt', 66)
 # storage = Storage(2, 0.95, 0.01)
-storage = Storage(2, 1, 0)
+storage = Storage(2.1, 0.98, 0)
 objective = objectivefactory('std0-3')
 
 # start = timeit.default_timer()
@@ -21,7 +22,7 @@ objective = objectivefactory('std0-3')
 # optim_hess.pplot()
 # end = timeit.default_timer() - start
 # print('HESS Calculation went for {} seconds'.format(end))
-
+#
 # start = timeit.default_timer()
 # setup_sess = singlesetupfactory('alt.low', '2')
 # optim_sess = OptimizeSingleESS(*setup_sess)
@@ -31,7 +32,7 @@ objective = objectivefactory('std0-3')
 
 start = timeit.default_timer()
 dia = HybridDia(signal, storage, objective)
-dia.calculate_curves(cuts=(1e-2, 0.4, 0.6, 1-1e-2))
+dia.calculate_curves()
 dia.calculate_area()
 end = timeit.default_timer() - start
 print('Hybrid Dia Calculation went for {} seconds'.format(end))

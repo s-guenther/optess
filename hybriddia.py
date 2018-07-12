@@ -3,6 +3,8 @@
 import itertools
 import scipy.interpolate as interp
 from numpy import linspace
+import multiprocessing as mp
+
 
 from optimize_ess import OptimizeSingleESS, OptimizeHybridESS
 from powersignal import Signal
@@ -40,8 +42,10 @@ class HybridDia:
         self.objective = Objective(objective)
         self.solver = Solver(solver)
         self.single = self.calculate_single()
-        self.inter = OnTheFlyDict(self, 'inter')
-        self.nointer = OnTheFlyDict(self, 'nointer')
+        # self.inter = OnTheFlyDict(self, 'inter')
+        # self.nointer = OnTheFlyDict(self, 'nointer')
+        self.inter = dict()
+        self.nointer = dict()
         self.area = dict()
         self.name = str(name)
 
@@ -71,13 +75,22 @@ class HybridDia:
                 self.nointer[cut] = optim_case
         return optim_case
 
+    def calculate_both(self, cut):
+        print('Starting cut={}'.format(cut))
+        inter = self.calculate_cut(cut, 'inter',
+                                   add_to_internal_list=False)
+        nointer = self.calculate_cut(cut, 'nointer',
+                                     add_to_internal_list=False)
+        print('Ending cut={}'.format(cut))
+        return cut, inter, nointer
+
     def calculate_curves(self, cuts=(0.2, 0.4, 0.5, 0.6, 0.8)):
-        for cut in cuts:
-            # TODO parallelize this code
-            print('Starting cut={}'.format(cut))
-            self.calculate_cut(cut, 'inter')
-            self.calculate_cut(cut, 'nointer')
-            print('Ending cut={}'.format(cut))
+        with mp.Pool() as pool:
+            res = pool.map(self.calculate_both, cuts)
+
+        for cut, inter, nointer in res:
+            self.inter[cut] = inter
+            self.nointer[cut] = nointer
 
     def calculate_area(self, raster=(7, 7)):
         """Calculates points within the hybridisation area to determine the

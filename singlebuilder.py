@@ -17,6 +17,7 @@ class SingleBuilder:
         self.model = None
         self.model_2nd = None
 
+    ###########################################################################
     # noinspection PyArgumentList
     def minimize_energy(self, signal, storage, objective,
                         name='Single ESS Model, 1st Dimensioning Stage'):
@@ -38,6 +39,7 @@ class SingleBuilder:
 
         return self.model
 
+    ###########################################################################
     def minimize_cycles(self, name='Single ESS Model, '
                                    '2nd Quadratic Minimizing Stage'):
         self.model_2nd = deepcopy(self.model)
@@ -58,14 +60,17 @@ class SingleBuilder:
 
         return model
 
+    ###########################################################################
     def build(self, signal, storage, objective, name='Single ESS Model'):
         return self.minimize_energy(signal, storage, objective, name)
 
+    ###########################################################################
     def _add_vars(self):
         """Defines all Variables of the optimization model"""
         # Extract Variables from Data
         signal = self.signal
         storage = self.storage
+        objective = self.objective
         model = self.model
 
         # Set for range of variables
@@ -75,22 +80,23 @@ class SingleBuilder:
         # steps
         model.objexpr = 0
 
+        _add_aux_vars(model, signal, storage, objective)
         _add_power_vars(model, storage)
         _add_energy_vars(model)
 
+    ###########################################################################
     def _add_constraints(self):
         """Defines all Constraints of the optimization model"""
         # Extract Variables from data
-        signal = self.signal
-        storage = self.storage
         model = self.model
 
         _lock_plus_and_minus_constraint(model)
-        _loss_model_constraint(model, signal, storage)
-        _integrate_power_constraint(model, signal)
+        _loss_model_constraint(model)
+        _integrate_power_constraint(model)
         _cyclic_energy_constraint(model)
         _energy_lower_max_constraint(model)
 
+    ###########################################################################
     def _add_capacity_minimizing_objective(self):
         """Adds objective function that minimizes energy capacity of peak and
         base. Must be called last."""
@@ -99,23 +105,39 @@ class SingleBuilder:
         model.objexpr += model.energycapacity
         model.obj = pe.Objective(expr=model.objexpr)
 
+    ###########################################################################
+    # noinspection PyProtectedMember
+    @staticmethod
+    def __cutting_low(mod, ii):
+        signal = mod._signal.vals
+        minpower = mod._objective.val.min
+        return signal[ii] + mod.power[ii] >= minpower
+
+    # noinspection PyProtectedMember
+    @staticmethod
+    def __cutting_high(mod, ii):
+        signal = mod._signal.vals
+        maxpower = mod._objective.val.max
+        return signal[ii] + mod.power[ii] <= maxpower
+
     def _add_peak_cutting_objective(self):
         """Add objective - this is an objective or aim in a larger sense as it
         will cut peak power which also adds constraints to reach the
         objective."""
-        signal = self.signal.vals
-        minpower = self.objective.val.min
-        maxpower = self.objective.val.max
         model = self.model
 
-        def cutting_low(mod, ii):
-            return signal[ii] + mod.power[ii] >= minpower
+        model.con_cutting_low = \
+            pe.Constraint(model.ind, rule=self.__cutting_low)
+        model.con_cutting_high = \
+            pe.Constraint(model.ind, rule=self.__cutting_high)
 
-        def cutting_high(mod, ii):
-            return signal[ii] + mod.power[ii] <= maxpower
-
-        model.con_cutting_low = pe.Constraint(model.ind, rule=cutting_low)
-        model.con_cutting_high = pe.Constraint(model.ind, rule=cutting_high)
+    ###########################################################################
+    @staticmethod
+    def __split_delta(mod, ii):
+        # noinspection PyProtectedMember
+        signal = mod._signal
+        return (signal[ii] - mod.power[ii] <=
+                mod.deltaplus[ii] + mod.deltaminus[ii])
 
     def _add_throughput_objective(self):
         """Add objective - this is an objective or aim in a larger sense as it
@@ -123,22 +145,18 @@ class SingleBuilder:
         also add constraints to reach objective. This objective only makes
         sense if the power from grid changes sign, i.e. if power is fed into
         grid"""
-        signal = self.signal.vals
-        dtime = self.signal.dtimes
+        dtimes = self.signal.dtimes
         maxenergy = self.objective.val
         model = self.model
 
         model.deltaplus = pe.Var(model.ind, bounds=(0, None))
         model.deltaminus = pe.Var(model.ind, bounds=(None, 0))
 
-        def split_delta(mod, ii):
-            return (signal[ii] - mod.power[ii] <=
-                    mod.deltaplus[ii] + mod.deltaminus[ii])
-
-        model.con_split_delta = pe.Constraint(model.ind, rule=split_delta)
+        model.con_split_delta = \
+            pe.Constraint(model.ind, rule=self.__split_delta)
 
         model.con_throughput = \
-            pe.Constraint(expr=sum(model.deltaplus[ii]*dtime[ii] <= maxenergy
+            pe.Constraint(expr=sum(model.deltaplus[ii]*dtimes[ii] <= maxenergy
                                    for ii in model.ind))
 
 
@@ -146,6 +164,14 @@ class SingleBuilder:
 # ### Elementary Functions
 # ###
 
+###############################################################################
+def _add_aux_vars(model, signal, storage, objective):
+    model._signal = signal
+    model._storage = storage
+    model._objective = objective
+
+
+###############################################################################
 def _add_power_vars(model, storage):
     # Base power and peak power
     model.power = pe.Var(model.ind, bounds=(storage.power.min,
@@ -159,6 +185,7 @@ def _add_power_vars(model, storage):
     model.inner = pe.Var(model.ind)
 
 
+###############################################################################
 def _add_energy_vars(model):
     # Energy content as function of time
     model.energy = pe.Var(model.ind, bounds=(0, None))
@@ -170,59 +197,65 @@ def _add_energy_vars(model):
     model.energyinit = pe.Var(bounds=(0, None))
 
 
+###############################################################################
+def __lock_power(mod, ii):
+    return mod.power[ii] == mod.powerplus[ii] + mod.powerminus[ii]
+
+
 def _lock_plus_and_minus_constraint(model, multiplier=1):
     """ensure that powerplus + powerminus = power, this also adds a soft
     constraint to the objective expression, minimizing powerplus - powerminus
     to prevent something like   power = plus + minus <==> 5 = 7 + -2
     and gain                    power = plus + minus <==> 5 = 5 + 0 instead"""
 
-    def lock_power(mod, ii):
-        return mod.power[ii] == mod.powerplus[ii] + mod.powerminus[ii]
-
-    model.con_lockpower = pe.Constraint(model.ind, rule=lock_power)
+    model.con_lockpower = pe.Constraint(model.ind, rule=__lock_power)
 
     model.objexpr += sum(model.powerplus[ii] - model.powerminus[ii]
                          for ii in model.ind)*multiplier
 
 
-def _loss_model_constraint(model, signal, storage):
+###############################################################################
+# noinspection PyProtectedMember
+def __losses(mod, ii):
+    storage = mod._storage
+    dtimes = mod._signal.dtimes
+    efficiency_losses = (mod.powerplus[ii] *
+                         storage.efficiency.charge +
+                         mod.powerminus[ii] /
+                         storage.efficiency.discharge)
+    if ii is 0:
+        discharge_losses = -mod.energyinit * \
+                           storage.selfdischarge*dtimes[ii]
+    else:
+        discharge_losses = -mod.energy[ii - 1] * \
+                           storage.selfdischarge*dtimes[ii]
+    return mod.inner[ii] == efficiency_losses + discharge_losses
+
+
+def _loss_model_constraint(model):
     """Implements efficiency losses and self discharge losses and links base
     power with inner base power (and peak power respectively)"""
-
-    dtimes = signal.dtimes
-
-    def losses(mod, ii):
-        efficiency_losses = (mod.powerplus[ii] *
-                             storage.efficiency.charge +
-                             mod.powerminus[ii] /
-                             storage.efficiency.discharge)
-        if ii is 0:
-            discharge_losses = -mod.energyinit * \
-                               storage.selfdischarge*dtimes[ii]
-        else:
-            discharge_losses = -mod.energy[ii - 1] * \
-                               storage.selfdischarge*dtimes[ii]
-        return mod.inner[ii] == efficiency_losses + discharge_losses
-
-    model.con_storagelosses = pe.Constraint(model.ind, rule=losses)
+    model.con_storagelosses = pe.Constraint(model.ind, rule=__losses)
 
 
-def _integrate_power_constraint(model, signal):
+###############################################################################
+# constraint integrate energy - connect power and energy
+def __integrate(mod, ii):
+    # noinspection PyProtectedMember
+    dtimes = mod._signal.dtimes
+    if ii is 0:
+        lastenergy = mod.energyinit
+    else:
+        lastenergy = mod.energy[ii - 1]
+    return mod.energy[ii] == lastenergy + mod.inner[ii] * dtimes[ii]
+
+
+def _integrate_power_constraint(model):
     """Euler Integration per timestep of power to gain energy"""
-
-    dtimes = signal.dtimes
-
-    # constraint integrate energy - connect power and energy
-    def integrate(mod, ii):
-        if ii is 0:
-            lastenergy = mod.energyinit
-        else:
-            lastenergy = mod.energy[ii - 1]
-        return mod.energy[ii] == lastenergy + mod.inner[ii] * dtimes[ii]
-
-    model.con_integrate = pe.Constraint(model.ind, rule=integrate)
+    model.con_integrate = pe.Constraint(model.ind, rule=__integrate)
 
 
+###############################################################################
 def _cyclic_energy_constraint(model):
     """Ensures that energy content at beginning of interval equals energy
     content at end of interval"""
@@ -231,14 +264,15 @@ def _cyclic_energy_constraint(model):
                                            model.energy[model.ind.last()]))
 
 
+###############################################################################
+def __energy_lower_max(mod, ii):
+    return mod.energy[ii] <= mod.energycapacity
+
+
 def _energy_lower_max_constraint(model):
     """Ensures that energy capacity of storages is not exceeded at all times"""
-
-    def energy_lower_max(mod, ii):
-        return mod.energy[ii] <= mod.energycapacity
-
     model.con_energylowermax = pe.Constraint(model.ind,
-                                             rule=energy_lower_max)
+                                             rule=__energy_lower_max)
 
     model.con_energyinitlowermax = \
         pe.Constraint(expr=(model.energyinit <= model.energycapacity))

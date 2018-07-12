@@ -4,8 +4,8 @@ from collections import namedtuple
 from overload import overload
 
 
-_Power = namedtuple('Power', 'min max')
-_Efficiency = namedtuple('Efficiency', 'charge discharge')
+_Power = namedtuple('_Power', 'min max')
+_Efficiency = namedtuple('_Efficiency', 'charge discharge')
 
 
 class Storage:
