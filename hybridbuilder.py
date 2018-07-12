@@ -50,10 +50,6 @@ class HybridBuilder:
         return self.model
 
     ###########################################################################
-    @staticmethod
-    def __lock_inter(mod, ii):
-        return mod.inter[ii] == mod.interplus[ii] + mod.interminus[ii]
-
     def minimize_cycles(self, baseenergy=None, peakenergy=None,
                         multiplier=1e-1, name='Hybrid EES Model Cycle '
                                               'Minimization'):
@@ -77,7 +73,7 @@ class HybridBuilder:
         model.interplus = pe.Var(model.ind, bounds=(0, None))
         model.interminus = pe.Var(model.ind, bounds=(None, 0))
 
-        model.con_lockinter = pe.Constraint(model.ind, rule=self.__lock_inter)
+        model.con_lockinter = pe.Constraint(model.ind, rule=_lock_inter)
 
         # Define a monotonically incrasing vector which will be multiplied
         # with interminus. This way, interstorage power flow becomes
@@ -146,22 +142,14 @@ class HybridBuilder:
         pass
 
     ###########################################################################
-    @staticmethod
-    def __nointer_constraint(mod, ii):
-        return mod.inter[ii] == 0
-
-    @staticmethod
-    def __bin_nointer_constraint(mod, ii):
-        return mod.bininterlower[ii] + mod.bininterupper[ii] == 0
-
     def _add_nointer_constraint(self):
         """Sets inter storage power flow to zero to prevent reloading"""
         model = self.model
 
         model.con_nointer = \
-            pe.Constraint(model.ind, rule=self.__nointer_constraint)
+            pe.Constraint(model.ind, rule=_nointer_constraint)
         model.con_bin_nointer = \
-            pe.Constraint(model.ind, rule=self.__bin_nointer_constraint)
+            pe.Constraint(model.ind, rule=_bin_nointer_constraint)
 
     ###########################################################################
     def _add_capacity_minimizing_objective(self, multiplier=0.50):
@@ -173,20 +161,6 @@ class HybridBuilder:
         model.obj = pe.Objective(expr=model.objexpr)
 
     ###########################################################################
-    # noinspection PyProtectedMember
-    @staticmethod
-    def __cutting_low(mod, ii):
-        signal = mod._signal.vals
-        minpower = mod._objective.val.min
-        return signal[ii] + (mod.base[ii] + mod.peak[ii]) >= minpower
-
-    # noinspection PyProtectedMember
-    @staticmethod
-    def __cutting_high(mod, ii):
-        signal = mod._signal.vals
-        maxpower = mod._objective.val.max
-        return signal[ii] + (mod.base[ii] + mod.peak[ii]) <= maxpower
-
     def _add_peak_cutting_objective(self):
         """Add objective - this is an objective or aim in a larger sense as it
         will cut peak power which also adds constraints to reach the
@@ -194,18 +168,11 @@ class HybridBuilder:
         model = self.model
 
         model.con_cutting_low = pe.Constraint(model.ind,
-                                              rule=self.__cutting_low)
+                                              rule=_cutting_low)
         model.con_cutting_high = pe.Constraint(model.ind,
-                                               rule=self.__cutting_high)
+                                               rule=_cutting_high)
 
     ###########################################################################
-    @staticmethod
-    def __split_delta(mod, ii):
-        # noinspection PyProtectedMember
-        signal = mod._signal.vals
-        return (signal[ii] - (mod.base[ii] + mod.peak[ii]) <=
-                mod.deltaplus[ii] + mod.deltaminus[ii])
-
     def _add_throughput_objective(self):
         """Add objective - this is an objective or aim in a larger sense as it
         will decrease the amount of energy taken from grid/supply etc. It will
@@ -220,11 +187,52 @@ class HybridBuilder:
         model.deltaminus = pe.Var(model.ind, bounds=(None, 0))
 
         model.con_split_delta = \
-            pe.Constraint(model.ind, rule=self.__split_delta)
+            pe.Constraint(model.ind, rule=_split_delta)
 
         model.con_throughput = \
             pe.Constraint(expr=sum(model.deltaplus[ii]*dtime[ii] <= maxenergy
                                    for ii in model.ind))
+
+
+###########################################################################
+# minimize_cycles(self, baseenergy=None, peakenergy=None,
+def _lock_inter(mod, ii):
+    return mod.inter[ii] == mod.interplus[ii] + mod.interminus[ii]
+
+
+###########################################################################
+# _add_nointer_constraint(self):
+def _nointer_constraint(mod, ii):
+    return mod.inter[ii] == 0
+
+
+def _bin_nointer_constraint(mod, ii):
+    return mod.bininterlower[ii] + mod.bininterupper[ii] == 0
+
+
+###########################################################################
+# _add_peak_cutting_objective(self):
+# noinspection PyProtectedMember
+def _cutting_low(mod, ii):
+    signal = mod._signal.vals
+    minpower = mod._objective.val.min
+    return signal[ii] + (mod.base[ii] + mod.peak[ii]) >= minpower
+
+
+# noinspection PyProtectedMember
+def _cutting_high(mod, ii):
+    signal = mod._signal.vals
+    maxpower = mod._objective.val.max
+    return signal[ii] + (mod.base[ii] + mod.peak[ii]) <= maxpower
+
+
+###########################################################################
+# _add_throughput_objective(self):
+def _split_delta(mod, ii):
+    # noinspection PyProtectedMember
+    signal = mod._signal.vals
+    return (signal[ii] - (mod.base[ii] + mod.peak[ii]) <=
+            mod.deltaplus[ii] + mod.deltaminus[ii])
 
 
 # ###

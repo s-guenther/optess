@@ -75,7 +75,7 @@ class HybridDia:
                 self.nointer[cut] = optim_case
         return optim_case
 
-    def calculate_both(self, cut):
+    def _parallel_both_cuts(self, cut):
         print('Starting cut={}'.format(cut))
         inter = self.calculate_cut(cut, 'inter',
                                    add_to_internal_list=False)
@@ -84,9 +84,10 @@ class HybridDia:
         print('Ending cut={}'.format(cut))
         return cut, inter, nointer
 
-    def calculate_curves(self, cuts=(0.2, 0.4, 0.5, 0.6, 0.8)):
+    def calculate_curves(self, cuts=(0.01, 0.2, 0.4, 0.5, 0.6, 0.8, 0.99)):
         with mp.Pool() as pool:
-            res = pool.map(self.calculate_both, cuts)
+            res = pool.map(self._parallel_both_cuts, cuts)
+        print('Finished parallel Hybrid Curve Calculation')
 
         for cut, inter, nointer in res:
             self.inter[cut] = inter
@@ -109,11 +110,19 @@ class HybridDia:
         powers = raster_vector(raster[0])*powercap
         energies = raster_vector(raster[1])*energycap
 
-        # TODO parallelize this code
-        for point in itertools.product(energies, powers):
+        # Filter point list
+        points = itertools.product(energies, powers)
+        filteredpoints = []
+        for point in points:
             if self.is_point_in_area(*point):
-                print('Calculating area point {}'.format(point))
-                self.calculate_point(*point)
+                filteredpoints.append(point)
+
+        with mp.Pool() as pool:
+            res = pool.map(self._parallel_point, filteredpoints)
+        print('Finished Parallel Area Calculation')
+
+        for energy, power, optim_case in res:
+            self.area[(energy, power)] = optim_case
 
     def is_point_in_area(self, energy, power):
         """Return True if a point is within the hybridisation area."""
@@ -136,7 +145,14 @@ class HybridDia:
 
         return minenergy <= energy <= maxenergy
 
-    def calculate_point(self, energy, power):
+    def _parallel_point(self, point):
+        print('Start calculating area point {}'.format(point))
+        optim_case = self.calculate_point(*point, add_to_internal_list=False)
+        print('End calculating area point {}'.format(point))
+        energy, power = point[0], point[1]
+        return energy, power, optim_case
+
+    def calculate_point(self, energy, power, add_to_internal_list=True):
         """The optimisation problem is solved for this point defined by
         power and energy."""
         cut = power/self.powercapacity
@@ -149,7 +165,10 @@ class HybridDia:
         peakenergy = self.energycapacity - energy
         optim_case.solve_pyomo_model(baseenergy, peakenergy)
 
-        self.area[(power, energy)] = optim_case
+        if add_to_internal_list:
+            self.area[(power, energy)] = optim_case
+
+        return optim_case
 
     def pprint(self):
         # TODO implement

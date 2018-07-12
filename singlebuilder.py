@@ -106,20 +106,6 @@ class SingleBuilder:
         model.obj = pe.Objective(expr=model.objexpr)
 
     ###########################################################################
-    # noinspection PyProtectedMember
-    @staticmethod
-    def __cutting_low(mod, ii):
-        signal = mod._signal.vals
-        minpower = mod._objective.val.min
-        return signal[ii] + mod.power[ii] >= minpower
-
-    # noinspection PyProtectedMember
-    @staticmethod
-    def __cutting_high(mod, ii):
-        signal = mod._signal.vals
-        maxpower = mod._objective.val.max
-        return signal[ii] + mod.power[ii] <= maxpower
-
     def _add_peak_cutting_objective(self):
         """Add objective - this is an objective or aim in a larger sense as it
         will cut peak power which also adds constraints to reach the
@@ -127,18 +113,11 @@ class SingleBuilder:
         model = self.model
 
         model.con_cutting_low = \
-            pe.Constraint(model.ind, rule=self.__cutting_low)
+            pe.Constraint(model.ind, rule=_cutting_low)
         model.con_cutting_high = \
-            pe.Constraint(model.ind, rule=self.__cutting_high)
+            pe.Constraint(model.ind, rule=_cutting_high)
 
     ###########################################################################
-    @staticmethod
-    def __split_delta(mod, ii):
-        # noinspection PyProtectedMember
-        signal = mod._signal
-        return (signal[ii] - mod.power[ii] <=
-                mod.deltaplus[ii] + mod.deltaminus[ii])
-
     def _add_throughput_objective(self):
         """Add objective - this is an objective or aim in a larger sense as it
         will decrease the amount of energy taken from grid/supply etc. It will
@@ -153,11 +132,36 @@ class SingleBuilder:
         model.deltaminus = pe.Var(model.ind, bounds=(None, 0))
 
         model.con_split_delta = \
-            pe.Constraint(model.ind, rule=self.__split_delta)
+            pe.Constraint(model.ind, rule=_split_delta)
 
         model.con_throughput = \
             pe.Constraint(expr=sum(model.deltaplus[ii]*dtimes[ii] <= maxenergy
                                    for ii in model.ind))
+
+
+###########################################################################
+# _add_peak_cutting_objective(self):
+# noinspection PyProtectedMember
+def _cutting_low(mod, ii):
+    signal = mod._signal.vals
+    minpower = mod._objective.val.min
+    return signal[ii] + mod.power[ii] >= minpower
+
+
+# noinspection PyProtectedMember
+def _cutting_high(mod, ii):
+    signal = mod._signal.vals
+    maxpower = mod._objective.val.max
+    return signal[ii] + mod.power[ii] <= maxpower
+
+
+###########################################################################
+# _add_throughput_objective(self):
+def _split_delta(mod, ii):
+    # noinspection PyProtectedMember
+    signal = mod._signal
+    return (signal[ii] - mod.power[ii] <=
+            mod.deltaplus[ii] + mod.deltaminus[ii])
 
 
 # ###

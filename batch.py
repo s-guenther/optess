@@ -6,7 +6,7 @@ outputs.
 
 from factories import hybridsetupfactory, singlesetupfactory,\
                       datafactory, objectivefactory
-# from optimize_ess import OptimizeHybridESS, OptimizeSingleESS
+from optimize_ess import OptimizeHybridESS, OptimizeSingleESS
 from storage import Storage
 from hybriddia import HybridDia
 import timeit
