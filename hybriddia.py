@@ -12,6 +12,7 @@ from storage import Storage
 from objective import Objective, Solver
 from matplotlib import pyplot as plt
 from collections import defaultdict
+import pickle
 
 
 class PointOutsideAreaError(ValueError):
@@ -36,12 +37,17 @@ class OnTheFlyDict(defaultdict):
 class HybridDia:
     # noinspection PyArgumentList
     def __init__(self, signal, singlestorage, objective, solver='gurobi',
-                 name='Hybridisation Diagram'):
+                 name='Hybridisation Diagram', calc_single_at_init=True):
         self.signal = Signal(signal)
         self.storage = Storage(singlestorage)
         self.objective = Objective(objective)
         self.solver = Solver(solver)
-        self.single = self.calculate_single()
+        if calc_single_at_init:
+            self.single = self.calculate_single()
+            self.energycapacity = self.single.results.energycapacity
+        else:
+            self.single = None
+            self.energycapacity = None
         # self.inter = OnTheFlyDict(self, 'inter')
         # self.nointer = OnTheFlyDict(self, 'nointer')
         self.inter = dict()
@@ -50,11 +56,11 @@ class HybridDia:
         self.name = str(name)
 
         self.powercapacity = self.storage.power.max
-        self.energycapacity = self.single.results.energycapacity
 
     def calculate_single(self):
         single = OptimizeSingleESS(self.signal, self.storage,
                                    self.objective, self.solver)
+        self.energycapacity = single.results.energycapacity
         return single
 
     def calculate_cut(self, cut, strategy='inter', add_to_internal_list=True):
@@ -116,6 +122,7 @@ class HybridDia:
         for point in points:
             if self.is_point_in_area(*point):
                 filteredpoints.append(point)
+        filteredpoints = tuple(filteredpoints)
 
         with mp.Pool() as pool:
             res = pool.map(self._parallel_point, filteredpoints)
@@ -210,16 +217,55 @@ class HybridDia:
         for x, y, cycles in zip(inter, powerinter, cyclesinter):
             ax.text(x, y, '{:.2f}, {:.2f}'.format(*cycles),
                     HorizontalAlignment='left', VerticalAlignment='top')
-        for (y, x), opt_case in self.area.items():
-            cbase, cpeak = self._get_cycles(opt_case)
-            ax.text(x, y, '{:.2f}'.format(cbase),
-                    color='blue', VerticalAlignment='top')
-            ax.text(x, y, '{:.2f}'.format(cpeak),
-                    color='red', VerticalAlignment='bottom')
+
+        # for (y, x), opt_case in self.area.items():
+        #     cbase, cpeak = self._get_cycles(opt_case)
+        #     ax.text(x, y, '{:.2f}'.format(cbase),
+        #             color='blue', VerticalAlignment='top')
+        #     ax.text(x, y, '{:.2f}'.format(cpeak),
+        #             color='red', VerticalAlignment='bottom')
 
         ax.set_ylabel('Power')
         ax.set_xlabel('Energy')
         ax.autoscale(tight=True)
+
+    def save(self, filename):
+        sep = '.'
+        try:
+            filename, fileend = filename.split(sep)
+        except ValueError:
+            filename, fileend = filename, '.hyb'
+
+        savedict = dict()
+        names = ['signal', 'storage', 'objective', 'solver', 'single', 'name',
+                 'inter', 'nointer', 'area', 'powercapacity', 'energycapacity']
+        for name in names:
+            savedict[name] = getattr(self, name)
+
+        with open(sep.join([filename, fileend]), 'wb') as file:
+            pickle.dump(savedict, file)
+
+    @classmethod
+    def load(cls, filename):
+        sep = '.'
+        try:
+            filename, fileend = filename.split(sep)
+        except ValueError:
+            filename, fileend = filename, 'hyb'
+
+        with open(sep.join([filename, fileend]), 'rb') as file:
+            savedict = pickle.load(file)
+
+        opt_case = HybridDia(savedict['signal'], savedict['storage'],
+                             savedict['objective'], savedict['solver'],
+                             savedict['name'], calc_single_at_init=False)
+
+        remaining = ['single', 'energycapacity', 'powercapacity', 'inter',
+                     'nointer', 'area']
+        for name in remaining:
+            setattr(opt_case, name, savedict[name])
+
+        return opt_case
 
     @staticmethod
     def _get_cycles(optim_case):

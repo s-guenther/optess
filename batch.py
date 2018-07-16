@@ -11,9 +11,9 @@ from storage import Storage
 from hybriddia import HybridDia
 import timeit
 
-signal = datafactory('alt', 66)
+signal = datafactory('alt', 44)
 # storage = Storage(2, 0.95, 0.01)
-storage = Storage(2.1, 0.98, 0)
+storage = Storage(2.0, 0.95, 1e-2)
 objective = objectivefactory('std0-3')
 
 # start = timeit.default_timer()
@@ -37,5 +37,6 @@ dia.calculate_area()
 end = timeit.default_timer() - start
 print('Hybrid Dia Calculation went for {} seconds'.format(end))
 dia.pplot()
+dia.save('testfile.hyb')
 
 a = 'asdf'
