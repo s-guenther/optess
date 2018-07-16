@@ -19,10 +19,15 @@ time = (np.arange(len(power))*6 + 6)/3600
 resampled_power, resampled_time = resample(power, t=time,
                                            num=int(np.floor(len(time)/5)))
 
+
 signal = Signal(time, power)
 resampled_signal = Signal(resampled_time, resampled_power)
-objective = Objective('power', 751)
-storage = Storage(317, 0.95, 1e-4)
+
+peakcut = 750
+storpower = max(resampled_signal.vals) - peakcut
+
+objective = Objective('power', peakcut)
+storage = Storage(storpower, 0.95, 1e-4)
 
 # ax = plt.figure().add_subplot(1,1,1)
 # signal.pplot(ax=ax)
