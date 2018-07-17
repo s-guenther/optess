@@ -6,220 +6,116 @@ import scipy.interpolate as interp
 from collections import namedtuple
 from powersignal import Signal
 from storage import Storage
-from objective import Objective, Solver, Strategy
+from objective import Objective
 
 
-class UnknownDatatypeError(ValueError):
-    pass
+class DataFactory:
+    @staticmethod
+    def std(npoints=110):
+        """Alternative Testcase providing simple load profile, best choose
+        a whole multiple of 22"""
+        x = range(23)
+        y = [3, 5, 2, 5, 3, 5, 2, 5, 3, 5, 2, 5,
+             3, 1, 2, 3, 2, 1, 2, 2, 2, 2, 2]
+        spl = interp.interp1d(x, y, 'linear')
+        xx = np.linspace((len(x)-1)/npoints, len(x)-1, npoints)
+        yy = spl(xx)
+        return Signal(xx, yy)
+
+    @staticmethod
+    def alt(npoints=64):
+        """Standard Testcase providing simple load profile"""
+        x = range(0, 17)
+        y = [3, 5, 3, 2, 3, 4, 3, 0, -1, 0, 3, 5, 3, -2, 3, 2, 2]
+        # noinspection PyTypeChecker
+        spl = interp.PchipInterpolator(x, y)
+        xx = np.linspace((len(x)-1)/npoints, len(x)-1, npoints)
+        yy = spl(xx)
+        return Signal(xx, yy)
+
+    @staticmethod
+    def rand(npoints=256, mu=10, freq=(3, 8, 10, 50), ampl=(1, 1.5, 2, 2),
+             time=None, seed=None):
+        if time is None:
+            time = npoints
+        if seed is None:
+            seed = np.random.randint(0, int(1e6))
+            print('Randomly chosen seed is {}.'.format(seed))
+        vals = mu*np.ones(npoints)
+        np.random.seed(seed)
+        for f, a in zip(freq, ampl):
+            y = np.random.randn(2*f+2)*a
+            x = np.linspace(0, npoints-1, len(y))
+            inter = interp.interp1d(x, y, 'cubic')
+            valsinter = inter(range(npoints))
+            vals += valsinter
+        return Signal(np.linspace(time/npoints, time, npoints), vals)
 
 
-class UnknownStorageError(ValueError):
-    pass
+class StorageFactory:
+    """Builds a storage with predefined loss models. Currently implemented
+    functions: ideal, low, medium, high. All functions take power as input
+    argument (default = 1)"""
+    @staticmethod
+    def ideal(power=1.0):
+        losses = [1, 0]
+        return Storage(power, *losses)
+
+    @staticmethod
+    def low(power=1.0):
+        losses = [0.95, 0.01]
+        return Storage(power, *losses)
+
+    @staticmethod
+    def medium(power=1.0):
+        losses = [0.9, 0.02]
+        return Storage(power, *losses)
+
+    @staticmethod
+    def high(power=1.0):
+        losses = [0.8, 0.05]
+        return Storage(power, *losses)
 
 
-class UnknownObjectiveError(ValueError):
-    pass
-
-
-# ###
-# ### Factories
-# ###
-
-# TODO replace strings with enums?
-
-
-def datafactory(datatype, *args):
-    """Builds a Signal representing a load profile as an input data for the
-    optimisation.
-    Currently implemented:
-        datafactory('std', nsamples=64)
-        datafactory('alt', nsamples=64)
+class ObjectiveFactory:
+    """Builds a predefined objective as input data for the optimisation.
+    Currently implemented: std03
     """
-    if datatype == 'std':
-        return _stdvals(*args)
-    elif datatype == 'alt':
-        return _altvals(*args)
-    else:
-        raise UnknownDatatypeError
-
-
-def storagefactory(datatype):
-    """Builds a Storage representing  as an input data for the optimisation.
-    Currently implemented:
-        storagefactory('<cut>.<loss>')
-        where <cut> can be '025', '05', '075'
-        and <loss> can be 'ideal', 'low', 'mid', 'high'
-    Implementation hint: The input string is split at the point '.'. If new
-    storages are added, the '<x>' and '<y>' strings must not contain a point
-    character '.'. Also, a new implementation must contain this
-    separating point.
-    """
-    sep = '.'
-    pwr, prefs = datatype.split(sep)
-    storageargs = []
-
-    if pwr == '0':
-        storageargs += [0]
-    elif pwr == '025':
-        storageargs += [0.25]
-    elif pwr == '05':
-        storageargs += [0.5]
-    elif pwr == '075':
-        storageargs += [0.75]
-    elif pwr == '1':
-        storageargs += [1]
-    elif pwr == '2':
-        storageargs += [2]
-    else:
-        raise UnknownStorageError
-
-    # storageargs += [efficiency, selfdischarge]
-    if prefs == 'ideal':
-        storageargs += [1, 0]
-    elif prefs == 'low':
-        storageargs += [0.95, 0.01]
-    elif prefs == 'med':
-        storageargs += [0.9, 0.02]
-    elif prefs == 'high':
-        storageargs += [0.8, 0.05]
-    else:
-        raise UnknownStorageError
-
-    return Storage(*storageargs)
-
-
-def objectivefactory(datatype):
-    """Builds a predefined objective as input data for te optimisation.
-    Currently implemented:
-        objectivefactory('std0-3')
-    """
-    if datatype == 'std0-3':
+    @staticmethod
+    def std03():
         return Objective('power', 3)
-    else:
-        raise UnknownObjectiveError
 
 
-NPOINTS = 220
+class HybridSetupFactory:
+    """Defines a complete setup for a hybrid storage optimisation"""
+    @staticmethod
+    def std(cut=0.5, losses=StorageFactory.low, npoints=110, strategy='inter'):
+        # This tuple can be unpacked directly into OptimModel
+        HybridSetup = namedtuple('HybridSetup', 'signal base peak objective '
+                                                'strategy solver name')
+        signal = DataFactory.std(npoints)
+        singlepower = 2
+        base = losses(cut*singlepower)
+        peak = losses((1-cut)*singlepower)
+        objective = ObjectiveFactory.std03()
+        solver = 'gurobi'
+        name = 'Hybrid Storage Optimization ' \
+               '{}.{}.{}.{}.{}'.format('std', base.power, peak.power,
+                                       objective.type, strategy)
+        return HybridSetup(signal, base, peak,
+                           objective, strategy, solver, name)
 
 
-def hybridsetupfactory(setup, *args):
-    """Builds a predefined setup for hybrid storageoptimisation, gathering
-    object instantiation of the other factories (data, storage, objective).
-    Currently implemented:
-        optimsetupfactory('<data>.<storages>', cut='05')
-        where <data> can take values of datafactory(),
-        <storages can take values of <y> component of storagefactory()
-        and cut can take values of <x> component of storagefactory().
-        E.g.:
-        optimsetupfactory('std.ideal')
-        optimsetupfactory('alt.low', '025')
-
-        Returns a namedtuple which cann be directly unpacked into OptimModel:
-        model = OptimModel(*optsetup)
-    """
-    sep = '.'
-    data, loss = setup.split(sep)
-    if not args:
-        cut = '05'
-        cutbase = '1'
-        cutpeak = '1'
-    else:
-        cut = args[0]
-        cutbase = '1'
-        cutpeak = '1'
-    # if cut == '025':
-    #     cutbase = '025'
-    #     cutpeak = '075'
-    # elif cut == '05':
-    #     cutbase = '05'
-    #     cutpeak = '05'
-    # elif cut == '075':
-    #     cutbase = '075'
-    #     cutpeak = '025'
-    # else:
-    #     raise UnknownStorageError
-
-    # This tuple can be unpacked directly into OptimModel
-    HybridSetup = namedtuple('HybridSetup', 'signal base peak objective '
-                                            'strategy solver name')
-
-    objective = 'std0-3'
-    strategy = 'inter'
-    solver = 'gurobi'
-    name = 'Hybrid Storage Optimization ' \
-           '{}.{}.{}.{}.{}'.format(data, cutbase, cutpeak, objective, strategy)
-
-    optsetup = HybridSetup(signal=datafactory(data, NPOINTS),
-                           base=storagefactory(cutbase + '.' + loss),
-                           peak=storagefactory(cutpeak + '.' + loss),
-                           objective=objectivefactory(objective),
-                           strategy=Strategy(strategy),
-                           solver=Solver(solver),
-                           name=name)
-
-    return optsetup
-
-
-def singlesetupfactory(setup, *args):
-    """Builds a predefined setup for single storageoptimisation, gathering
-    object instantiation of the other factories (data, storage, objective).
-    Currently implemented:
-        optimsetupfactory('<data>.<storages>', power=1)
-        where <data> can take values of datafactory(),
-        <storages can take values of <y> component of storagefactory()
-        and cut can take values of <x> component of storagefactory().
-        E.g.:
-        optimsetupfactory('std.ideal')
-        optimsetupfactory('alt.low', '025')
-
-        Returns a namedtuple which cann be directly unpacked into OptimModel:
-        model = OptimModel(*optsetup)
-    """
-    sep = '.'
-    data, loss = setup.split(sep)
-    if not args:
-        power = '2'
-    else:
-        power = args[0]
-
-    # This tuple can be unpacked directly into OptimModel
-    SingleSetup = namedtuple('SingleSetup', 'signal storage objective '
-                                            'solver name')
-
-    objective = 'std0-3'
-    solver = 'gurobi'
-    name = 'Single Storage Optimization ' \
-           '{}.{}.{}'.format(data, power, objective)
-
-    optsetup = SingleSetup(signal=datafactory(data, NPOINTS),
-                           storage=storagefactory(power + '.' + loss),
-                           objective=objectivefactory(objective),
-                           solver=Solver(solver),
-                           name=name)
-
-    return optsetup
-
-
-# ###
-# ### DataFactory Generating Functions
-# ###
-
-def _stdvals(nsamples=64):
-    """Standard Testcase providing simple load profile"""
-    x = range(0, 17)
-    y = [3, 5, 3, 2, 3, 4, 3, 0, -1, 0, 3, 5, 3, -2, 3, 2, 2]
-    # noinspection PyTypeChecker
-    spl = interp.PchipInterpolator(x, y)
-    xx = np.linspace((len(x)-1)/nsamples, len(x)-1, nsamples)
-    yy = spl(xx)
-    return Signal(xx, yy)
-
-
-def _altvals(nsamples=64):
-    """Alternative Testcase providing simple load profile"""
-    x = range(23)
-    y = [3, 5, 2, 5, 3, 5, 2, 5, 3, 5, 2, 5, 3, 1, 2, 3, 2, 1, 2, 2, 2, 2, 2]
-    spl = interp.interp1d(x, y, 'linear')
-    xx = np.linspace((len(x)-1)/nsamples, len(x)-1, nsamples)
-    yy = spl(xx)
-    return Signal(xx, yy)
+class SingleSetupFactory:
+    @staticmethod
+    def std(losses=StorageFactory.low, npoints=110):
+        # This tuple can be unpacked directly into OptimModel
+        SingleSetup = namedtuple('SingleSetup', 'signal storage objective '
+                                                'solver name')
+        signal = DataFactory.std(npoints)
+        storage = losses(2)
+        objective = ObjectiveFactory.std03()
+        solver = 'gurobi'
+        name = 'Single Storage Optimization ' \
+               '{}.{}.{}'.format('std', storage.power, objective.type)
+        return SingleSetup(signal, storage, objective, solver, name)
