@@ -124,8 +124,9 @@ class HybridDia:
                 filteredpoints.append(point)
         filteredpoints = tuple(filteredpoints)
 
-        with mp.Pool() as pool:
-            res = pool.map(self._parallel_point, filteredpoints)
+        res = []
+        for point in filteredpoints:
+            res.append(self._parallel_point(point))
         print('Finished Parallel Area Calculation')
 
         for energy, power, optim_case in res:
@@ -206,24 +207,46 @@ class HybridDia:
             nointer.append(optim_case.results.baseenergycapacity)
             cyclesnointer.append(self._get_cycles(optim_case))
 
-        ax = plt.figure().add_subplot(1, 1, 1)
-        ax.plot([0, self.energycapacity], [0, self.powercapacity])
-        ax.plot(nointer, powernointer, linestyle='--')
-        ax.plot(inter, powerinter)
+        fig = plt.figure()
+        ax = fig.add_subplot(1, 1, 1)
+        ax.plot([0, self.energycapacity], [0, self.powercapacity],
+                color='black')
+        ax.plot(nointer, powernointer, linestyle='--', color='orange',
+                linewidth=2)
+        ax.plot(inter, powerinter, color='black')
 
+        xvec, yvec, cycvec = list(), list(), list()
         for x, y, cycles in zip(nointer, powernointer, cyclesnointer):
-            ax.text(x, y, '{:.2f}, {:.2f}'.format(*cycles),
-                    HorizontalAlignment='right', VerticalAlignment='bottom')
+            ax.text(x, y, '{:.2f}'.format(cycles[1]))
+            xvec.append(x)
+            yvec.append(y)
+            cycvec.append(cycles[0])
         for x, y, cycles in zip(inter, powerinter, cyclesinter):
-            ax.text(x, y, '{:.2f}, {:.2f}'.format(*cycles),
-                    HorizontalAlignment='left', VerticalAlignment='top')
+            ax.text(x, y, '{:.2f}'.format(cycles[1]))
+            xvec.append(x)
+            yvec.append(y)
+            cycvec.append(cycles[0])
+        for (x, y), opt_case in self.area.items():
+            cbase, cpeak = self._get_cycles(opt_case)
+            ax.text(x, y, '{:.2f}'.format(cpeak))
+            xvec.append(x)
+            yvec.append(y)
+            cycvec.append(cbase)
+        cycsingle = self.single.results.power.cycles(self.energycapacity)
+        xvec.append(self.energycapacity)
+        yvec.append(self.powercapacity)
+        cycvec.append(cycsingle)
+        xvec.append(0)
+        yvec.append(0)
+        cycvec.append(self.storage.efficiency.charge)
+        ax.tricontour(xvec, yvec, cycvec, 14, colors='k', linewidths=0.5)
+        contour = ax.tricontourf(xvec, yvec, cycvec, 14, cmap='PuBu')
+        fig.colorbar(contour, ax=ax)
 
-        # for (y, x), opt_case in self.area.items():
-        #     cbase, cpeak = self._get_cycles(opt_case)
-        #     ax.text(x, y, '{:.2f}'.format(cbase),
-        #             color='blue', VerticalAlignment='top')
-        #     ax.text(x, y, '{:.2f}'.format(cpeak),
-        #             color='red', VerticalAlignment='bottom')
+        ax2 = fig.add_axes((0.16, 0.76, 0.24, 0.10))
+        ax3 = fig.add_axes((0.16, 0.64, 0.24, 0.10))
+        ax4 = fig.add_axes((0.16, 0.52, 0.24, 0.10))
+        self.single.pplot(ax=(ax2, ax3, ax4))
 
         ax.set_ylabel('Power')
         ax.set_xlabel('Energy')
@@ -234,7 +257,7 @@ class HybridDia:
         try:
             filename, fileend = filename.split(sep)
         except ValueError:
-            filename, fileend = filename, '.hyb'
+            filename, fileend = filename, 'hyb'
 
         savedict = dict()
         names = ['signal', 'storage', 'objective', 'solver', 'single', 'name',
