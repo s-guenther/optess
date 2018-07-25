@@ -13,23 +13,16 @@ class HybridResults:
         signalvarnames = ['base', 'peak',
                           'baseinner', 'peakinner',
                           'inter',
-                          'baseenergy', 'peakenergy',
-                          'binbaselower', 'binbaseupper',
-                          'binpeaklower', 'binpeakupper',
-                          'bininterlower', 'bininterupper']
+                          'baseenergy', 'peakenergy']
         floatvarnames = ['baseenergycapacity', 'peakenergycapacity',
                          'baseenergyinit', 'peakenergyinit']
 
         for varname in signalvarnames:
-            setattr(self,
-                    varname,
-                    Signal(signal.times,
-                           getattr(model, varname).get_values().values()))
-
+            vals = list(getattr(model, varname).get_values().values())
+            setattr(self, varname, Signal(signal.times, vals))
         for varname in floatvarnames:
-            setattr(self,
-                    varname,
-                    list(getattr(model, varname).get_values().values())[0])
+            val = list(getattr(model, varname).get_values().values())[0]
+            setattr(self, varname, val)
 
         # Derived variables
         self.power = self.base + self.peak
@@ -128,15 +121,12 @@ class SingleResults:
                          'energyinit']
 
         for varname in signalvarnames:
-            setattr(self,
-                    varname,
-                    Signal(signal.times,
-                           getattr(model, varname).get_values().values()))
+            vals = list(getattr(model, varname).get_values().values())
+            setattr(self, varname, Signal(signal.times, vals))
 
         for varname in floatvarnames:
-            setattr(self,
-                    varname,
-                    list(getattr(model, varname).get_values().values())[0])
+            val = list(getattr(model, varname).get_values().values())[0]
+            setattr(self, varname, val)
 
         # Derived variables
         self.signedlosses = ((self.power - self.inner) * (self.power >= 0) +

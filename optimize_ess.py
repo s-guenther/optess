@@ -180,7 +180,10 @@ class AbstractOptimizeESS(ABC):
         self._model = None
         self._results = None
         self._solverstatus = None
-        self._first_stage = None
+
+    def _clear_model(self):
+        self._model = None
+        self._solverstatus = None
 
     def _build_pyomo_model(self):
         """Create a Pyomo Model, save it internally"""
@@ -191,7 +194,7 @@ class AbstractOptimizeESS(ABC):
         self._model = model
 
     @abstractmethod
-    def solve_pyomo_model(self):
+    def solve_pyomo_model(self, clear_model=False):
         pass
 
     @abstractmethod
@@ -271,7 +274,8 @@ class OptimizeHybridESS(AbstractOptimizeESS):
         self._strategy = Strategy(val)
         self._modified()
 
-    def solve_pyomo_model(self, baseenergy=None, peakenergy=None):
+    def solve_pyomo_model(self, baseenergy=None, peakenergy=None,
+                          clear_model=False):
         solver = pe.SolverFactory(self.solver.name)
         # If no dimensions are provided, then solve the model for the first
         # time and extract dimensions from the solution
@@ -287,6 +291,8 @@ class OptimizeHybridESS(AbstractOptimizeESS):
             self._first_stage = first_stage
             baseenergy = self.results.baseenergycapacity
             peakenergy = self.results.peakenergycapacity
+            if clear_model:
+                self._first_stage._clear_model()
 
         # Then, build and solve second stage
         self._build_2nd_pyomo_model(baseenergy, peakenergy)
@@ -296,6 +302,10 @@ class OptimizeHybridESS(AbstractOptimizeESS):
             self._results = self._extract_results(self.model, self.signal)
         else:
             self._results = NoResults()
+        if clear_model:
+            self._clear_model()
+
+        super().solve_pyomo_model(clear_model=clear_model)
 
     def _is_completely_defined(self):
         return all([self.signal, self.base, self.peak, self.objective])
@@ -359,7 +369,7 @@ class OptimizeSingleESS(AbstractOptimizeESS):
     def _is_completely_defined(self):
         return all([self.signal, self.storage, self.objective])
 
-    def solve_pyomo_model(self):
+    def solve_pyomo_model(self, clear_model=False):
         """Solve the pyomo model, build it if neccessary, save internally"""
         solver = pe.SolverFactory(self.solver.name)
         model = self.model
@@ -372,6 +382,7 @@ class OptimizeSingleESS(AbstractOptimizeESS):
                                                   self.signal)
         else:
             self._results = NoResults()
+        super().solve_pyomo_model(clear_model=clear_model)
 
     @staticmethod
     def _extract_results(model, signal):

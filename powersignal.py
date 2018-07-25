@@ -2,7 +2,7 @@
 
 import operator
 from overload import overload
-from numpy import cumsum
+import numpy as np
 from matplotlib import pyplot as plt
 
 from utility import make_empty_axes
@@ -23,10 +23,8 @@ class TimeVectorsNotEqualError(ValueError):
 class Signal:
     @overload
     def __init__(self, times, vals):
-        self._times = tuple(float(time) for time in times)
-        self._vals = tuple(float(val) for val in vals)
-        self._dtimes = [second - first for first, second
-                        in zip((0,) + self.times[:-1], self.times)]
+        self._times = times if type(times) is np.ndarray else np.array(times)
+        self._vals = vals if type(vals) is np.ndarray else np.array(vals)
 
         self._validate()
 
@@ -44,12 +42,12 @@ class Signal:
 
     @property
     def dtimes(self):
-        return self._dtimes
+        prependzero = np.concatenate(([0], self.times))
+        return prependzero[1:] - prependzero[:-1]
 
     def integrate(self, int_constant=0):
         """Integrates the signal and returns the integral as a new signal."""
-        energy_chunks = [val*dt for val, dt in zip(self.vals, self.dtimes)]
-        energies = list(cumsum(energy_chunks) + int_constant)
+        energies = np.cumsum(self.vals*self.dtimes) + int_constant
         return Signal(self.times, energies)
 
     def cycles(self, capacity=None):
@@ -105,12 +103,12 @@ class Signal:
             other = Signal(other)
         except AttributeError:
             # Assume input is scalar, Scalar function is applied
-            valvec = (fcn(val, other) for val in self.vals)
+            valvec = list(fcn(val, other) for val in self.vals)
         else:
             # Signal function is applied
             if not self._is_same_time(other):
                 raise TimeVectorsNotEqualError
-            valvec = (fcn(a, b) for a, b in zip(self.vals, other.vals))
+            valvec = list(fcn(a, b) for a, b in zip(self.vals, other.vals))
         return Signal(self.times, valvec)
 
     def __add__(self, other):
