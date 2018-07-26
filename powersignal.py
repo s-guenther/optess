@@ -45,6 +45,31 @@ class Signal:
         prependzero = np.concatenate(([0], self.times))
         return prependzero[1:] - prependzero[:-1]
 
+    @property
+    def amv(self):
+        """Average mean value"""
+        return 1/self.times[-1]*sum(self.vals*self.dtimes)
+
+    @property
+    def arv(self):
+        """Average rectified value"""
+        return 1/self.times[-1]*sum(abs(self.vals)*self.dtimes)
+
+    @property
+    def rms(self):
+        """Root Mean Square"""
+        return np.sqrt(1/self.times[-1]*sum(self.vals**2*self.dtimes))
+
+    @property
+    def form(self):
+        """Form Factor"""
+        return self.rms/self.arv
+
+    @property
+    def crest(self):
+        """Crest Factor"""
+        return max(self.vals)/self.rms
+
     def integrate(self, int_constant=0):
         """Integrates the signal and returns the integral as a new signal."""
         energies = np.cumsum(self.vals*self.dtimes) + int_constant
