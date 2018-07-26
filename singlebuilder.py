@@ -223,16 +223,12 @@ def _lock_plus_and_minus_constraint(model, multiplier=1):
 def __losses(mod, ii):
     storage = mod._storage
     dtimes = mod._signal.dtimes
-    efficiency_losses = (mod.powerplus[ii] *
-                         storage.efficiency.charge +
-                         mod.powerminus[ii] /
-                         storage.efficiency.discharge)
+    efficiency_losses = (mod.powerplus[ii]*storage.efficiency.charge +
+                         mod.powerminus[ii]/storage.efficiency.discharge)
     if ii is 0:
-        discharge_losses = -mod.energyinit * \
-                           storage.selfdischarge*dtimes[ii]
+        discharge_losses = -mod.energyinit/storage.selfdischarge
     else:
-        discharge_losses = -mod.energy[ii - 1] * \
-                           storage.selfdischarge*dtimes[ii]
+        discharge_losses = -mod.energy[ii-1]/storage.selfdischarge
     return mod.inner[ii] == efficiency_losses + discharge_losses
 
 

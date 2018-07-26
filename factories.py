@@ -58,22 +58,22 @@ class StorageFactory:
     argument (default = 1)"""
     @staticmethod
     def ideal(power=1.0):
-        losses = [1, 0]
+        losses = [1, np.inf]
         return Storage(power, *losses)
 
     @staticmethod
     def low(power=1.0):
-        losses = [0.95, 0.01]
+        losses = [0.95, 1/0.001]
         return Storage(power, *losses)
 
     @staticmethod
     def medium(power=1.0):
-        losses = [0.9, 0.02]
+        losses = [0.9, 1/0.002]
         return Storage(power, *losses)
 
     @staticmethod
     def high(power=1.0):
-        losses = [0.8, 0.05]
+        losses = [0.8, 1/0.005]
         return Storage(power, *losses)
 
 

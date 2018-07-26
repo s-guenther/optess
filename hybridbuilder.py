@@ -351,30 +351,24 @@ def _bounds_for_inter_constraint(model):
 # noinspection PyProtectedMember
 def __base_losses(mod, ii):
     base = mod._base
-    dtimes = mod._signal.dtimes
     efficiency_losses = (mod.baseplus[ii] * base.efficiency.charge +
                          mod.baseminus[ii] / base.efficiency.discharge)
     if ii is 0:
-        discharge_losses = -mod.baseenergyinit * \
-                           base.selfdischarge*dtimes[ii]
+        discharge_losses = -mod.baseenergyinit/base.selfdischarge
     else:
-        discharge_losses = -mod.baseenergy[ii - 1] * \
-                           base.selfdischarge*dtimes[ii]
+        discharge_losses = -mod.baseenergy[ii-1]/base.selfdischarge
     return mod.baseinner[ii] == efficiency_losses + discharge_losses
 
 
 # noinspection PyProtectedMember
 def __peak_losses(mod, ii):
     peak = mod._peak
-    dtimes = mod._signal.dtimes
     efficiency_losses = (mod.peakplus[ii] * peak.efficiency.charge +
                          mod.peakminus[ii] / peak.efficiency.discharge)
     if ii is 0:
-        discharge_losses = -mod.peakenergyinit * \
-                           peak.selfdischarge*dtimes[ii]
+        discharge_losses = -mod.peakenergyinit/peak.selfdischarge
     else:
-        discharge_losses = -mod.peakenergy[ii - 1] * \
-                           peak.selfdischarge*dtimes[ii]
+        discharge_losses = -mod.peakenergy[ii - 1]/peak.selfdischarge
     return mod.peakinner[ii] == efficiency_losses + discharge_losses
 
 
