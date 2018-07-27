@@ -15,11 +15,14 @@ import timeit
 signal = DataFactory.rand(200, mu=1, freq=(6, 10),
                           ampl=(1, 3), time=100, seed=200)
 signal.pplot()
-objective = Objective('energy', 159.761)
-storage = StorageFactory.low(2.9)
-
+objective = Objective('energy', 170)
+storage = Storage(2.1, 0.95, 1e50)
 opt = OptimizeSingleESS(signal, storage, objective)
 opt.solve_pyomo_model()
 
+base = Storage(1.05, 0.95, 1e50)
+peak = Storage(1.05, 0.95, 1e50)
+opthyb = OptimizeHybridESS(signal, base, peak, objective)
+opthyb.solve_pyomo_model()
 
 virtualbreakpoint = True

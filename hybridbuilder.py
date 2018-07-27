@@ -180,7 +180,7 @@ class HybridBuilder:
         sense if the power from grid changes sign, i.e. if power is fed into
         grid"""
         dtime = self.signal.dtimes
-        maxenergy = self.objective.val
+        maxenergy = self.objective.val.max
         model = self.model
 
         model.deltaplus = pe.Var(model.ind, bounds=(0, None))
@@ -190,8 +190,8 @@ class HybridBuilder:
             pe.Constraint(model.ind, rule=_split_delta)
 
         model.con_throughput = \
-            pe.Constraint(expr=sum(model.deltaplus[ii]*dtime[ii] <= maxenergy
-                                   for ii in model.ind))
+            pe.Constraint(expr=sum(model.deltaplus[ii]*dtime[ii]
+                                   for ii in model.ind) <= maxenergy)
 
 
 ###########################################################################
@@ -231,7 +231,7 @@ def _cutting_high(mod, ii):
 def _split_delta(mod, ii):
     # noinspection PyProtectedMember
     signal = mod._signal.vals
-    return (signal[ii] - (mod.base[ii] + mod.peak[ii]) <=
+    return (signal[ii] + (mod.base[ii] + mod.peak[ii]) <=
             mod.deltaplus[ii] + mod.deltaminus[ii])
 
 
