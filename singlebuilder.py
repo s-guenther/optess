@@ -125,7 +125,7 @@ class SingleBuilder:
         sense if the power from grid changes sign, i.e. if power is fed into
         grid"""
         dtimes = self.signal.dtimes
-        maxenergy = self.objective.val
+        maxenergy = self.objective.val.max  # TODO, formulation makes no sense
         model = self.model
 
         model.deltaplus = pe.Var(model.ind, bounds=(0, None))
@@ -135,8 +135,8 @@ class SingleBuilder:
             pe.Constraint(model.ind, rule=_split_delta)
 
         model.con_throughput = \
-            pe.Constraint(expr=sum(model.deltaplus[ii]*dtimes[ii] <= maxenergy
-                                   for ii in model.ind))
+            pe.Constraint(expr=sum(model.deltaplus[ii]*dtimes[ii]
+                                   for ii in model.ind) <= maxenergy )
 
 
 ###########################################################################
@@ -159,8 +159,8 @@ def _cutting_high(mod, ii):
 # _add_throughput_objective(self):
 def _split_delta(mod, ii):
     # noinspection PyProtectedMember
-    signal = mod._signal
-    return (signal[ii] - mod.power[ii] <=
+    signal = mod._signal.vals
+    return (signal[ii] + mod.power[ii] <=
             mod.deltaplus[ii] + mod.deltaminus[ii])
 
 

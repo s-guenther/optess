@@ -138,17 +138,17 @@ class AbstractOptimizeESS(ABC):
         original_signal = self.signal
         new_signal = self.signal + self.results.power
 
-        original_signal.pplot(ax=ax1, color='black', linewidth=2)
-        new_signal.pplot(ax=ax1, color='darkcyan', linewidth=2)
+        original_signal.pplot(ax=ax1, color='grey', linewidth=2)
+        new_signal.pplot(ax=ax1, color='black', linewidth=3)
         # noinspection PyUnresolvedReferences
-        bool_ge = (original_signal >= new_signal).vals
+        bool_ge = (original_signal > new_signal).vals
         bool_ge = [bool(val) for val in bool_ge]
         # this compensates a bug in fill_between to not draw the first element
         for ii in range(1, len(bool_ge)):
             if bool_ge[ii] and not bool_ge[ii-1]:
                 bool_ge[ii-1] = True
-        # noinspection PyUnresolvedReferences
-        bool_le = (original_signal <= new_signal).vals
+        # # noinspection PyUnresolvedReferences
+        bool_le = (original_signal < new_signal).vals
         bool_le = [bool(val) for val in bool_le]
         # this compensates a bug in fill_between to not draw the first element
         for ii in range(1, len(bool_le)):
