@@ -78,7 +78,7 @@ class HybridBuilder:
         # Define a monotonically incrasing vector which will be multiplied
         # with interminus. This way, interstorage power flow becomes
         # determined and unambiguous (hopefully)
-        monoinc = [(3*model.ind.last() + ii)/3 for ii in model.ind]
+        monoinc = [(model.ind.last() + ii) for ii in model.ind]
 
         model.objexpr = sum((-model.baseminus[ii]
                              + (model.interplus[ii] -
