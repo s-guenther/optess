@@ -60,7 +60,7 @@ class HybridDia:
     def calculate_single(self):
         single = OptimizeSingleESS(self.signal, self.storage,
                                    self.objective, self.solver)
-        single.solve_pyomo_model(clear_model=True)
+        single.solve_pyomo_model()
         self.energycapacity = single.results.energycapacity
         return single
 
@@ -73,7 +73,7 @@ class HybridDia:
 
         optim_case = OptimizeHybridESS(signal, base, peak, objective,
                                        strategy, solver)
-        optim_case.solve_pyomo_model(clear_model=True)
+        optim_case.solve_pyomo_model()
 
         if add_to_internal_list:
             if strategy == 'inter':
@@ -172,7 +172,7 @@ class HybridDia:
 
         baseenergy = energy
         peakenergy = self.energycapacity - energy
-        optim_case.solve_pyomo_model(baseenergy, peakenergy, clear_model=True)
+        optim_case.solve_pyomo_model(baseenergy, peakenergy)
 
         if add_to_internal_list:
             self.area[(power, energy)] = optim_case
