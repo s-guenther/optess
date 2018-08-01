@@ -4,6 +4,7 @@
 import pyomo.environ as pe
 from abc import ABC, abstractmethod
 import copy
+import pickle
 
 from hybridbuilder import HybridBuilder
 from singlebuilder import SingleBuilder
@@ -148,6 +149,7 @@ class AbstractOptimizeESS(ABC):
             if bool_ge[ii] and not bool_ge[ii-1]:
                 bool_ge[ii-1] = True
         # noinspection PyUnresolvedReferences
+
         bool_le = (original_signal < new_signal).vals
         bool_le = [bool(val) for val in bool_le]
         # this compensates a bug in fill_between to not draw the first element
@@ -188,6 +190,32 @@ class AbstractOptimizeESS(ABC):
         else:
             raise DataIsNotCompletelyDefinedError()
         self._model = model
+
+    def save(self, filename):
+        """Saves the object to disc"""
+        sep = '.'
+        try:
+            filename, fileend = filename.split(sep)
+        except ValueError:
+            filename, fileend = filename, 'opt'
+
+        with open(sep.join([filename, fileend]), 'wb') as file:
+            pickle.dump(self, file)
+
+    # TODO move load and save functions to separate library
+    @staticmethod
+    def load(filename):
+        """Load an optimize ess object"""
+        sep = '.'
+        try:
+            filename, fileend = filename.split(sep)
+        except ValueError:
+            filename, fileend = filename, 'opt'
+
+        with open(sep.join([filename, fileend]), 'rb') as file:
+            opt_case = pickle.load(file)
+
+        return opt_case
 
     @abstractmethod
     def solve_pyomo_model(self):

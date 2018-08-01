@@ -194,6 +194,9 @@ class Signal:
     def __neg__(self):
         return Signal(self.times, [-x for x in self.vals])
 
+    def __abs__(self):
+        return Signal(self.times, abs(self.vals))
+
     def __len__(self):
         return len(self.times)
 

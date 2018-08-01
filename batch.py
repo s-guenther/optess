@@ -30,21 +30,21 @@ import timeit
 # end = timeit.default_timer() - start
 # print('HESS Calculation went for {} seconds'.format(end))
 
-peakcut = 41.5
+peakcut = 3
 objective = Objective('power', peakcut)
-for npoints in [220, 330, 440, 880, 1760]:
-    signal = DataFactory.rand(npoints, mu=40, freq=(10, 30, 60),
-                              ampl=(1, 2, 3), time=100, seed=815)
+for npoints in [44, 66, 88, 110, 220, 440]:
+    name = 'std_{}'.format(npoints)
+    signal = DataFactory.std(npoints)
     storagepower = (max(signal.vals) - peakcut)
-    storage = Storage(storagepower, 0.95, 100)
+    storage = Storage(storagepower, 0.95, 1000)
     start = timeit.default_timer()
-    dia = HybridDia(signal, storage, objective)
+    dia = HybridDia(signal, storage, objective, name=name)
     dia.calculate_curves()
-    dia.calculate_area()
+    dia.calculate_area((7, 7))
     end = timeit.default_timer() - start
     print('Hybrid Dia Calculation npoints = {} went for {} seconds'.format(
         npoints, end))
     dia.pplot()
-    dia.save('seed_815_{}.hyb'.format(npoints))
+    dia.save()
 
 virtualbreakpoint = True

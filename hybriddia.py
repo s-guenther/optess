@@ -4,6 +4,8 @@ import itertools
 import scipy.interpolate as interp
 from numpy import linspace
 import multiprocessing as mp
+from datetime import datetime
+import os
 
 
 from optimize_ess import OptimizeSingleESS, OptimizeHybridESS
@@ -12,6 +14,7 @@ from storage import Storage
 from objective import Objective, Solver
 from matplotlib import pyplot as plt
 from collections import defaultdict
+from results import ReducedHybridResults, ReducedSingleResults
 import pickle
 
 
@@ -37,23 +40,33 @@ class OnTheFlyDict(defaultdict):
 class HybridDia:
     # noinspection PyArgumentList
     def __init__(self, signal, singlestorage, objective, solver='gurobi',
-                 name='Hybridisation Diagram', calc_single_at_init=True):
+                 name=None, calc_single_at_init=True, save_to_disc=True):
         self.signal = Signal(signal)
         self.storage = Storage(singlestorage)
         self.objective = Objective(objective)
         self.solver = Solver(solver)
+        self._save_to_disc = save_to_disc
+
+        if name is None:
+            self.name = datetime.now().strftime('HybDia-%y%m%d-%H%M%S')
+        else:
+            self.name = str(name)
+
+        if not os.path.isdir(self.name):
+            os.mkdir(self.name)
+
         if calc_single_at_init:
             self.single = self.calculate_single()
-            self.energycapacity = self.single.results.energycapacity
+            self.energycapacity = self.single.dim.energy
         else:
             self.single = None
             self.energycapacity = None
+
         # self.inter = OnTheFlyDict(self, 'inter')
         # self.nointer = OnTheFlyDict(self, 'nointer')
         self.inter = dict()
         self.nointer = dict()
         self.area = dict()
-        self.name = str(name)
 
         self.powercapacity = self.storage.power.max
 
@@ -62,7 +75,9 @@ class HybridDia:
                                    self.objective, self.solver)
         single.solve_pyomo_model()
         self.energycapacity = single.results.energycapacity
-        return single
+        results = ReducedSingleResults(single, savepath=self.name,
+                                       save_to_disc=self._save_to_disc)
+        return results
 
     def calculate_cut(self, cut, strategy='inter', add_to_internal_list=True):
         signal = self.signal
@@ -75,12 +90,15 @@ class HybridDia:
                                        strategy, solver)
         optim_case.solve_pyomo_model()
 
+        results = ReducedHybridResults(optim_case, savepath=self.name,
+                                       save_to_disc=self._save_to_disc)
+
         if add_to_internal_list:
             if strategy == 'inter':
-                self.inter[cut] = optim_case
+                self.inter[cut] = results
             elif strategy == 'nointer':
-                self.nointer[cut] = optim_case
-        return optim_case
+                self.nointer[cut] = results
+        return results
 
     def _parallel_both_cuts(self, cut):
         print('Starting cut={}'.format(cut))
@@ -145,8 +163,7 @@ class HybridDia:
 
         # Interpolate Hybridisation Curve with given points
         hcuts = sorted(self.inter.keys())
-        henergies = [self.inter[hcut].results.baseenergycapacity
-                     for hcut in hcuts]
+        henergies = [self.inter[hcut].basedim.energy for hcut in hcuts]
         hcurve = interp.interp1d(hcuts, henergies, 'linear')
 
         minenergy = self.energycapacity*cut  # left side of area at spec. cut
@@ -174,10 +191,13 @@ class HybridDia:
         peakenergy = self.energycapacity - energy
         optim_case.solve_pyomo_model(baseenergy, peakenergy)
 
-        if add_to_internal_list:
-            self.area[(power, energy)] = optim_case
+        results = ReducedHybridResults(optim_case, savepath=self.name,
+                                       save_to_disc=self._save_to_disc)
 
-        return optim_case
+        if add_to_internal_list:
+            self.area[(power, energy)] = results
+
+        return results
 
     def pprint(self):
         # TODO implement
@@ -195,18 +215,18 @@ class HybridDia:
         cyclesinter = []
         for cut in sorted(self.inter.keys()):
             powerinter.append(cut*self.powercapacity)
-            optim_case = self.inter[cut]
-            inter.append(optim_case.results.baseenergycapacity)
-            cyclesinter.append(self._get_cycles(optim_case))
+            results = self.inter[cut]
+            inter.append(results.basedim.energy)
+            cyclesinter.append((results.basecycles, results.peakcycles))
 
         powernointer = []
         nointer = []
         cyclesnointer = []
         for cut in sorted(self.nointer.keys()):
             powernointer.append(cut*self.powercapacity)
-            optim_case = self.nointer[cut]
-            nointer.append(optim_case.results.baseenergycapacity)
-            cyclesnointer.append(self._get_cycles(optim_case))
+            results = self.nointer[cut]
+            nointer.append(results.basedim.energy)
+            cyclesnointer.append((results.basecycles, results.peakcycles))
 
         fig = plt.figure()
         ax = fig.add_subplot(1, 1, 1)
@@ -227,13 +247,13 @@ class HybridDia:
             xvec.append(x)
             yvec.append(y)
             cycvec.append(cycles[0])
-        for (x, y), opt_case in self.area.items():
-            cbase, cpeak = self._get_cycles(opt_case)
+        for (x, y), results in self.area.items():
+            cbase, cpeak = (results.basecycles, results.peakcycles)
             ax.text(x, y, '{:.2f}'.format(cpeak))
             xvec.append(x)
             yvec.append(y)
             cycvec.append(cbase)
-        cycsingle = self.single.results.power.cycles(self.energycapacity)
+        cycsingle = self.single.cycles
         xvec.append(self.energycapacity)
         yvec.append(self.powercapacity)
         cycvec.append(cycsingle)
@@ -244,33 +264,34 @@ class HybridDia:
         contour = ax.tricontourf(xvec, yvec, cycvec, 14, cmap='PuBu')
         fig.colorbar(contour, ax=ax)
 
-        ax2 = fig.add_axes((0.16, 0.76, 0.24, 0.10))
-        ax3 = fig.add_axes((0.16, 0.64, 0.24, 0.10))
-        ax4 = fig.add_axes((0.16, 0.52, 0.24, 0.10))
-        self.single.pplot(ax=(ax2, ax3, ax4))
+        try:
+            single = self.single.load_all_results()
+        except FileNotFoundError:
+            pass
+        else:
+            ax2 = fig.add_axes((0.16, 0.76, 0.24, 0.10))
+            ax3 = fig.add_axes((0.16, 0.64, 0.24, 0.10))
+            ax4 = fig.add_axes((0.16, 0.52, 0.24, 0.10))
+            single.pplot(ax=(ax2, ax3, ax4))
 
         ax.set_ylabel('Power')
         ax.set_xlabel('Energy')
         ax.autoscale(tight=True)
 
-    def save(self, filename):
+    def save(self, filename=None):
+        if filename is None:
+            filename = self.name
         sep = '.'
         try:
             filename, fileend = filename.split(sep)
         except ValueError:
             filename, fileend = filename, 'hyb'
 
-        savedict = dict()
-        names = ['signal', 'storage', 'objective', 'solver', 'single', 'name',
-                 'inter', 'nointer', 'area', 'powercapacity', 'energycapacity']
-        for name in names:
-            savedict[name] = getattr(self, name)
-
         with open(sep.join([filename, fileend]), 'wb') as file:
-            pickle.dump(savedict, file)
+            pickle.dump(self, file)
 
-    @classmethod
-    def load(cls, filename):
+    @staticmethod
+    def load(filename):
         sep = '.'
         try:
             filename, fileend = filename.split(sep)
@@ -278,26 +299,7 @@ class HybridDia:
             filename, fileend = filename, 'hyb'
 
         with open(sep.join([filename, fileend]), 'rb') as file:
-            savedict = pickle.load(file)
-
-        opt_case = HybridDia(savedict['signal'], savedict['storage'],
-                             savedict['objective'], savedict['solver'],
-                             savedict['name'], calc_single_at_init=False)
-
-        remaining = ['single', 'energycapacity', 'powercapacity', 'inter',
-                     'nointer', 'area']
-        for name in remaining:
-            setattr(opt_case, name, savedict[name])
-
+            opt_case = pickle.load(file)
         return opt_case
-
-    @staticmethod
-    def _get_cycles(optim_case):
-        """Returns base and peak cycles as tuple"""
-        energybase = optim_case.results.baseenergycapacity
-        energypeak = optim_case.results.peakenergycapacity
-        basepower = optim_case.results.base + optim_case.results.baseinter
-        peakpower = optim_case.results.peak + optim_case.results.peakinter
-        return basepower.cycles(energybase), peakpower.cycles(energypeak)
 
 # TODO __repr__

@@ -3,3 +3,4 @@ __pycache__/
 results.yml
 stahlwerk*
 *.hyb
+*.opt

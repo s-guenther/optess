@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 
-from utility import make_empty_axes, make_two_empty_axes
+from utility import make_two_empty_axes
 from powersignal import Signal
+from collections import namedtuple
+from random import randint
+import os
+import pickle
 
 
 # noinspection PyUnresolvedReferences
@@ -39,6 +43,8 @@ class HybridResults:
                                  (self.peak >= 0) +
                                  (self.peakinner - self.peak) *
                                  (self.peak < 0))
+
+        self.basecycles, self.peakcycles = self._get_cycles()
 
     def pprint(self):
         # TODO implement
@@ -98,6 +104,14 @@ class HybridResults:
             self.peakenergy.pplot(ax=ax2, color='#8b1a1a', linewidth=2)
             ax2.autoscale(tight=True)
 
+    def _get_cycles(self):
+        """Returns base and peak cycles as tuple"""
+        energybase = self.baseenergycapacity
+        energypeak = self.peakenergycapacity
+        basepower = self.base + self.baseinter
+        peakpower = self.peak + self.peakinter
+        return basepower.cycles(energybase), peakpower.cycles(energypeak)
+
     def __repr__(self):
         strfmt = '<<{cls} at {resid}>, base={b}, peak={p}>'
         fields = dict(cls=self.__class__.__name__,
@@ -131,6 +145,8 @@ class SingleResults:
         # Derived variables
         self.signedlosses = ((self.power - self.inner) * (self.power >= 0) +
                              (self.inner - self.power) * (self.power < 0))
+
+        self.cycles = self._get_cycles()
 
     def pprint(self):
         # TODO implement
@@ -172,6 +188,10 @@ class SingleResults:
                       s=self.energycapacity)
         return strfmt.format(**fields)
 
+    def _get_cycles(self):
+        """Returns base and peak cycles as tuple"""
+        return self.power.cycles(self.energycapacity)
+
 
 class NoResults:
     """Dummy Class which is returned if the solver failed"""
@@ -180,3 +200,91 @@ class NoResults:
 
     def pprint(self):
         pass
+
+
+_Dim = namedtuple('_Dim', 'power energy')
+_SignalParameters = namedtuple('_SignalParameters', 'arv rms form crest')
+
+
+class ReducedHybridResults:
+    """Writes Results to Disc and only holds relevant integral variables"""
+    def __init__(self, optim_case, savepath='', save_to_disc=True):
+        """Takes an OptimizeHybridESS object and extracts data"""
+        results = optim_case.results
+
+        self.basedim = _Dim(optim_case.base.power, results.baseenergycapacity)
+        self.peakdim = _Dim(optim_case.peak.power, results.peakenergycapacity)
+
+        self.baselosses = max(abs(results.basesignedlosses).integrate())
+        self.peaklosses = max(abs(results.peaksignedlosses).integrate())
+
+        self.baseparameters = _SignalParameters(results.baseinner.arv,
+                                                results.baseinner.rms,
+                                                results.baseinner.form,
+                                                results.baseinner.crest)
+        self.peakparameters = _SignalParameters(results.peakinner.arv,
+                                                results.peakinner.rms,
+                                                results.peakinner.form,
+                                                results.peakinner.crest)
+
+        self.basecycles = results.basecycles
+        self.peakcycles = results.peakcycles
+
+        self._filename = None
+        if save_to_disc:
+            self._save_to_disc(savepath, optim_case)
+
+    def _save_to_disc(self, savepath, optim_case):
+        tag = '{:04x}'.format(randint(0, 16**4))
+        while os.path.isfile(os.path.join(savepath, tag)):
+            tag = '{:04x}'.format(randint(0, 16**4))
+        self._filename = os.path.join(savepath, tag)
+        optim_case.save(self._filename)
+
+    # TODO move load and save functions to separate library
+    def load_all_results(self):
+        filename, fileend = self._filename, 'opt'
+        sep = '.'
+        with open(sep.join([filename, fileend]), 'rb') as file:
+            opt_case = pickle.load(file)
+        return opt_case
+
+
+class ReducedSingleResults:
+    """Writes Results to Disc and only holds relevant integral variables"""
+    def __init__(self, optim_case, savepath='', save_to_disc=True):
+        """Takes an OptimizeHybridESS object and extracts data"""
+        results = optim_case.results
+
+        self.dim = _Dim(optim_case.storage.power, results.energycapacity)
+
+        self.losses = max(abs(results.signedlosses).integrate())
+
+        self.signalparameters = _SignalParameters(results.inner.arv,
+                                                  results.inner.rms,
+                                                  results.inner.form,
+                                                  results.inner.crest)
+        self.cycles = results.cycles
+
+        self._filename = None
+        if save_to_disc:
+            self._save_to_disc(savepath, optim_case)
+
+        # TODO add data which are needed for plotting
+        # add all, but resample to a reasonable amount of data
+
+    def _save_to_disc(self, savepath, optim_case):
+        tag = '{:04x}'.format(randint(0, 16**4))
+        while os.path.isfile(os.path.join(savepath, tag)):
+            tag = '{:04x}'.format(randint(0, 16**4))
+        self._filename = os.path.join(savepath, tag)
+        optim_case.save(self._filename)
+
+    # TODO move load and save functions to separate library
+    def load_all_results(self):
+        """Load an optimize ess object"""
+        filename, fileend = self._filename, 'opt'
+        sep = '.'
+        with open(sep.join([filename, fileend]), 'rb') as file:
+            opt_case = pickle.load(file)
+        return opt_case
