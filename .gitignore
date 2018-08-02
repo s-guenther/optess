@@ -6,4 +6,5 @@ stahlwerk*
 *.opt
 *.pyc
 /dist/
-/.*egginfo
+*egg*
+build/

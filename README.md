@@ -33,9 +33,9 @@ Installation
 
 _Information below is outdated._
 
-Download the source code and add it to the python search path. Install the
-missing packages (via pip). Install and sign up for optional solvers (e.g.
-gurobi or glpk)
+Download source code and install via `pip install .` or install directly from
+pypi.org servers via `pip install optess`. Note, that the last one might be an
+outdated version.
 
 
 Getting Started
