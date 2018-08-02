@@ -4,13 +4,9 @@ Generates some random signals and solves them.
 """
 
 import itertools
-from factories import DataFactory
-from objective import Objective
-from optimize_ess import OptimizeHybridESS, OptimizeSingleESS
-from storage import Storage
-from hybriddia import HybridDia
 from matplotlib import pyplot as plt
-import timeit
+
+import optess as oe
 
 hybdias = list()
 seeds = [314159]
@@ -22,14 +18,14 @@ freqs = [3, 10, 100]
 ampl = [0.3, 2]
 
 peakcut = 40.5
-objective = Objective('power', peakcut)
+objective = oe.Objective('power', peakcut)
 
 for seed, noise in itertools.product(seeds, noises):
     print('-----  Calculating seed={}, noise={}   -----'.format(seed, noise))
-    sig = DataFactory.rand(npoints, mu, freqs, ampl + [noise], seed=seed)
+    sig = oe.DataFactory.rand(npoints, mu, freqs, ampl + [noise], seed=seed)
     storagepower = max(sig.vals) - peakcut
-    storage = Storage(storagepower, 0.95, 1e-3)
-    hyb = HybridDia(sig, storage, objective)
+    storage = oe.Storage(storagepower, 0.95, 1e-3)
+    hyb = oe.HybridDia(sig, storage, objective)
     hyb.calculate_curves()
     hyb.calculate_area((11, 11))
     hybdias.append(hyb)

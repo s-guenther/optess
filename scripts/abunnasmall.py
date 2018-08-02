@@ -5,12 +5,8 @@ setup, run optimisation, save results"""
 import numpy as np
 import timeit
 from scipy.signal import resample
-from matplotlib import pyplot as plt
 
-from hybriddia import HybridDia
-from objective import Objective
-from powersignal import Signal
-from storage import Storage
+import optess as oe
 
 data = np.genfromtxt('stahlwerkmod.csv', delimiter=';')
 power = data[:, 4]
@@ -19,14 +15,14 @@ time = (np.arange(len(power))*6 + 6)/3600
 resampled_power, resampled_time = resample(power, t=time,
                                            num=int(np.floor(len(time)/10/15)))
 
-signal = Signal(time, power)
-resampled_signal = Signal(resampled_time, resampled_power)
+signal = oe.Signal(time, power)
+resampled_signal = oe.Signal(resampled_time, resampled_power)
 
 peakcut = 1050
 storpower = max(resampled_signal.vals) - peakcut
 
-objective = Objective('power', peakcut)
-storage = Storage(storpower, 0.95, 1e-3)
+objective = oe.Objective('power', peakcut)
+storage = oe.Storage(storpower, 0.95, 1e-3)
 
 # ax = plt.figure().add_subplot(1, 1, 1)
 # signal.pplot(ax=ax)
@@ -34,7 +30,8 @@ storage = Storage(storpower, 0.95, 1e-3)
 
 print('Initializing HybridDia Object...')
 start = timeit.default_timer()
-hybdia = HybridDia(resampled_signal, storage, objective, name='Stahlwerk Unna')
+hybdia = oe.HybridDia(resampled_signal, storage, objective,
+                      name='Stahlwerk Unna')
 end = timeit.default_timer() - start
 print('Initialized... Time: {} seconds'.format(end))
 
