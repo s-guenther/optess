@@ -1,10 +1,10 @@
-OPTIMIZE-EES
+OPTESS
 ============
 
-_The development of this toolbox is still in early stage. It is not intended for
-productive use at the moment._
+_The development of this toolbox is still in early stage. It is not intended
+for productive use at the moment._
 
-OPTIMIZE-EES is a framework around a (MI)LP Optimization to dimension an energy
+OPTESS is a framework around a (MI)LP Optimization to dimension an energy
 storage system or hybrid energy storage system. It builds the model with the
 help of pyomo and provides routines and classes for pre- and postprocessing.
 Exemplarily, the toolbox can take a load profile of a factory and calculate
@@ -28,9 +28,10 @@ Additional Python Packages:
 - overload
 
 
-
 Installation
 ------------
+
+_Information below is outdated._
 
 Download the source code and add it to the python search path. Install the
 missing packages (via pip). Install and sign up for optional solvers (e.g.
@@ -39,6 +40,8 @@ gurobi or glpk)
 
 Getting Started
 ---------------
+
+_Information below is outdated._
 
 Program flow is centered around two main classes, `OptimizeSingleEES` and
 `OptimizeHybridEES`, depending on whether a single energy storage shall be
@@ -104,6 +107,8 @@ visualize and show the different objects, e.g.
 
 Known Issues
 ------------
+
+_Information below is outdated._
 
 Hybrid EES Optimization is virtually useless at the moment as the model is
 erroneous.

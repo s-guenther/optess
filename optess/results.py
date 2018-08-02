@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 
-from utility import make_two_empty_axes
-from powersignal import Signal
 from collections import namedtuple
 from random import randint
 import os
 import pickle
+
+from .utility import make_two_empty_axes
+from .signal import Signal
 
 
 # noinspection PyUnresolvedReferences

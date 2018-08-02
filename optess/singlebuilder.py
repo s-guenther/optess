@@ -4,9 +4,10 @@ Its related to building the pyomo model for HESS"""
 
 import pyomo.environ as pe
 from copy import deepcopy
-from powersignal import Signal
-from objective import Objective
-from storage import Storage
+
+from .signal import Signal
+from .objective import Objective
+from .storage import Storage
 
 
 class SingleBuilder:

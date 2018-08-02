@@ -6,16 +6,15 @@ from numpy import linspace
 import multiprocessing as mp
 from datetime import datetime
 import os
-
-
-from optimize_ess import OptimizeSingleESS, OptimizeHybridESS
-from powersignal import Signal
-from storage import Storage
-from objective import Objective, Solver
 from matplotlib import pyplot as plt
 from collections import defaultdict
-from results import ReducedHybridResults, ReducedSingleResults
 import pickle
+
+from .optimize_ess import OptimizeSingleESS, OptimizeHybridESS
+from .signal import Signal
+from .storage import Storage
+from .objective import Objective, Solver
+from .results import ReducedHybridResults, ReducedSingleResults
 
 
 class PointOutsideAreaError(ValueError):

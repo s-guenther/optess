@@ -5,9 +5,9 @@ Its related to building the pyomo model for HESS"""
 import pyomo.environ as pe
 from copy import deepcopy
 
-from objective import Objective, Strategy
-from powersignal import Signal
-from storage import Storage
+from .objective import Objective, Strategy
+from .signal import Signal
+from .storage import Storage
 
 
 class HybridBuilder:

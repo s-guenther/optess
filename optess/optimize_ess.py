@@ -6,13 +6,13 @@ from abc import ABC, abstractmethod
 import copy
 import pickle
 
-from hybridbuilder import HybridBuilder
-from singlebuilder import SingleBuilder
-from objective import Objective, Solver, Strategy
-from results import SingleResults, HybridResults, NoResults
-from powersignal import Signal
-from storage import Storage
-from utility import make_three_empty_axes
+from .hybridbuilder import HybridBuilder
+from .singlebuilder import SingleBuilder
+from .objective import Objective, Solver, Strategy
+from .results import SingleResults, HybridResults, NoResults
+from .signal import Signal
+from .storage import Storage
+from .utility import make_three_empty_axes
 
 
 class DataIsNotCompletelyDefinedError(Exception):
@@ -28,7 +28,7 @@ class NoFirstStageCalculatedError(Exception):
 
 
 class AbstractOptimizeESS(ABC):
-    """Returns an initalized or uninitialized optimmodel object
+    """Returns an initialized or uninitialized optimmodel object
     which holds information about a hybrid storage optimisation setting.
         signal      - load profile data (signal.t, signal.x values)
         base        - base storage data (base.power, base.efficiency,

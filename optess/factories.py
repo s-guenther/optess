@@ -4,9 +4,10 @@
 import numpy as np
 import scipy.interpolate as interp
 from collections import namedtuple
-from powersignal import Signal
-from storage import Storage
-from objective import Objective
+
+from .signal import Signal
+from .storage import Storage
+from .objective import Objective
 
 
 class DataFactory:

@@ -5,7 +5,7 @@ from overload import overload
 import numpy as np
 from matplotlib import pyplot as plt
 
-from utility import make_empty_axes
+from .utility import make_empty_axes
 
 
 class TimeValueVectorsNotEqualLengthError(ValueError):
