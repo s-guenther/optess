@@ -142,9 +142,11 @@ class HybridDia:
                 filteredpoints.append(point)
         filteredpoints = tuple(filteredpoints)
 
-        res = []
-        for point in filteredpoints:
-            res.append(self._parallel_point(point))
+        # res = []
+        # for point in filteredpoints:
+        #     res.append(self._parallel_point(point))
+        with mp.Pool() as pool:
+            res = pool.map(self._parallel_point, filteredpoints)
         print('Finished Parallel Area Calculation')
 
         for energy, power, optim_case in res:
