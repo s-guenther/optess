@@ -14,7 +14,8 @@ npoints = 10000
 dia = oe.HybridDia.load('/bigwork/nhmcsgue/large/first{}'.format(npoints))
 
 dia.name = 'second{}'.format(npoints)
-os.mkdir('second{}'.format(npoints))
+if not os.path.isdir(dia.name):
+    os.mkdir('second{}'.format(npoints))
 
 start = timeit.default_timer()
 dia.calculate_area((11, 11))
