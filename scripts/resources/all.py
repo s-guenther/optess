@@ -48,4 +48,6 @@ def main(npoints, nprocesses):
 
 
 if __name__ == '__main__':
-    main(*[int(argv) for argv in sys.argv])
+    NPOINTS = int(sys.argv[1])
+    PROCESSORS = int(sys.argv[2])
+    main(NPOINTS, PROCESSORS)
