@@ -18,4 +18,4 @@ module load matplotlib/1.5.1-Python-3.4.3
 
 cd $BIGWORK/large
 
-python3 /home/nhmcsgue/optess/first1000.py $NPOINTS $CORES
+python3 /home/nhmcsgue/optess/scripts/resources/all.py $NPOINTS $CORES
