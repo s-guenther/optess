@@ -3,7 +3,7 @@
 #PBS -l nodes=1:ppn=$CORES
 #PBS -l walltime=$WALLTIME
 #PBS -l mem=$MEM
-#PBS -x PARTITION=$PARTITION
+#PBS -W x=PARTITION:$PARTITION
 #PBS -N $NAME
 #PBS -M sebastian.guenther@ifes.uni-hannover.de
 #PBS -m abe
