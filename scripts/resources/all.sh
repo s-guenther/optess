@@ -2,9 +2,9 @@
 
 #PBS -l nodes=1:ppn=$CORES
 #PBS -l walltime=$WALLTIME
-#PBS -l mem=$MEMGB
+#PBS -l mem=$MEM
 #PBS -x PARTITION=$PARTITION
-#PBS -N #NAME
+#PBS -N $NAME
 #PBS -M sebastian.guenther@ifes.uni-hannover.de
 #PBS -m abe
 #PBS -j oe
