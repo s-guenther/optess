@@ -39,7 +39,8 @@ class OnTheFlyDict(defaultdict):
 class HybridDia:
     # noinspection PyArgumentList
     def __init__(self, signal, singlestorage, objective, solver='gurobi',
-                 name=None, calc_single_at_init=True, save_to_disc=True):
+                 name=None, calc_single_at_init=True, save_to_disc=True,
+                 nprocesses=None):
         self.signal = Signal(signal)
         self.storage = Storage(singlestorage)
         self.objective = Objective(objective)
@@ -68,6 +69,11 @@ class HybridDia:
         self.area = dict()
 
         self.powercapacity = self.storage.power.max
+
+        if nprocesses is None:
+            self._nprocesses = mp.cpu_count()
+        else:
+            self._nprocesses = nprocesses
 
     def calculate_single(self):
         single = OptimizeSingleESS(self.signal, self.storage,
@@ -109,7 +115,7 @@ class HybridDia:
         return cut, inter, nointer
 
     def calculate_curves(self, cuts=(0.01, 0.2, 0.4, 0.5, 0.6, 0.8, 0.99)):
-        with mp.Pool() as pool:
+        with mp.Pool(processes=self._nprocesses) as pool:
             res = pool.map(self._parallel_both_cuts, cuts)
         print('Finished parallel Hybrid Curve Calculation')
 
@@ -145,7 +151,7 @@ class HybridDia:
         # res = []
         # for point in filteredpoints:
         #     res.append(self._parallel_point(point))
-        with mp.Pool() as pool:
+        with mp.Pool(processes=self._nprocesses) as pool:
             res = pool.map(self._parallel_point, filteredpoints)
         print('Finished Parallel Area Calculation')
 
