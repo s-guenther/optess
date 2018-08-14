@@ -2,7 +2,7 @@
 
 import itertools
 import scipy.interpolate as interp
-from numpy import linspace
+from numpy import linspace, trapz
 import multiprocessing as mp
 from datetime import datetime
 import os
@@ -205,6 +205,25 @@ class HybridDia:
             self.area[(power, energy)] = results
 
         return results
+
+    @property
+    def hybridpotential(self):
+        cuts = sorted(self.inter.keys())
+        energies = []
+        for cut in cuts:
+            energies.append(self.inter[cut].basedim.energy)
+        singleenergy = self.energycapacity
+        return 2/singleenergy*trapz(energies, x=cuts) - 1
+
+    @property
+    def reloadpotential(self):
+        cuts = sorted(self.nointer.keys())
+        energies = []
+        for cut in cuts:
+            energies.append(self.nointer[cut].basedim.energy)
+        singleenergy = self.energycapacity
+        rpot = 2/singleenergy*trapz(energies, x=cuts) - 1
+        return self.hybridpotential - rpot
 
     def pprint(self):
         # TODO implement
