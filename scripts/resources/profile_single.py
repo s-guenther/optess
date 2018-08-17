@@ -11,8 +11,9 @@ import optess as oe
 
 
 def main(npoints, nprocesses):
-
     # Define and create signal
+    start = timeit.default_timer()
+
     mu = 100
     freq = [int(npoints*f) for f in [0.005, 0.02, 0.05, 0.2]]
     ampl = [1, 2, 4, 8]
@@ -27,6 +28,9 @@ def main(npoints, nprocesses):
     peakcut = (pmax - pmin)*0.4 + pmin
     storagepower = pmax - peakcut
 
+    end = timeit.default_timer() - start
+    print('Preprocessing... {} seconds'.format(end))
+
     # Define, create objective and storage
     objective = oe.Objective('power', peakcut)
     storage = oe.Storage(storagepower, 0.95, 1e6)
@@ -38,7 +42,7 @@ def main(npoints, nprocesses):
     dia = oe.HybridDia(signal, storage, objective,
                        name=name, nprocesses=nprocesses)
     end = timeit.default_timer() - start
-    print('Single Calc went for {} seconds'.format(end))
+    print('Single Calculation ... {} seconds'.format(end))
 
     # Save
     start = timeit.default_timer()

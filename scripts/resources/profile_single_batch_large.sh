@@ -1,24 +1,24 @@
 #!/bin/bash
 
-NPOINTSLIST=(1000 2200 4700 10000 \
-             1000 2200 4700 10000 \
-             1000 2200 4700 10000 \
-             1000 2200 4700 10000)
+NPOINTSLIST=(22000 47000 100000 220000 \
+             22000 47000 100000 220000 \
+             22000 47000 100000 220000 \
+             22000 47000 100000 220000)
 
-CORESLIST=(1 2 4 8 \
-           1 2 4 8 \
-           1 2 4 8 \
-           1 2 4 8)
+CORESLIST=(1 1 1 1 \
+           4 4 4 4 \
+           8 8 8 8 \
+           16 16 16 16)
 
-WALLTIMELIST=(00:00:12 00:00:25 00:01:05 00:04:30 \
-              00:00:12 00:00:16 00:00:50 00:03:10 \
-              00:00:12 00:00:12 00:00:35 00:02:00 \
-              00:00:12 00:00:12 00:00:22 00:01:40)
+WALLTIMELIST=(00:16:00 00:40:00 01:50:00 05:00:00 \
+              00:08:00 00:36:00 01:50:00 05:00:00 \
+              00:08:00 00:36:00 01:50:00 05:00:00 \
+              00:08:00 00:36:00 01:50:00 05:00:00)
 
-MEMLIST=(256MB 512MB 1024MB 2048MB \
-         256MB 512MB 1024MB 2048MB \
-         256MB 512MB 1024MB 2048MB \
-         256MB 512MB 1024MB 2048MB)
+MEMLIST=(5GB 10GB 20GB 50GB \
+         5GB 10GB 20GB 50GB \
+         5GB 10GB 20GB 50GB \
+         5GB 10GB 20GB 50GB)
 
 PARTITIONLIST=(lena lena lena lena \
                lena lena lena lena \
@@ -32,7 +32,7 @@ export MEM
 export PARTITION
 export NAME
 
-DIRNAME=singlesubs
+DIRNAME=singlesubs_large
 if [ ! -d $DIRNAME ]
 then
     mkdir $DIRNAME
@@ -51,4 +51,3 @@ do
 
     envsubst < /home/nhmcsgue/optess/scripts/resources/profile_single.sh > $DIRNAME/$NAME.sh
 done
-

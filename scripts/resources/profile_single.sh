@@ -18,4 +18,4 @@ module load matplotlib/1.5.1-Python-3.4.3
 
 cd $BIGWORK/large
 
-python3 /home/nhmcsgue/optess/scripts/resources/profile_single.py $NPOINTS
+/usr/bin/time python3 /home/nhmcsgue/optess/scripts/resources/profile_single.py $NPOINTS
