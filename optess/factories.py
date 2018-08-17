@@ -36,7 +36,7 @@ class DataFactory:
 
     @staticmethod
     def rand(npoints=256, mu=10, freq=(3, 8, 10, 50), ampl=(1, 1.5, 2, 2),
-             time=None, seed=None):
+             time=None, seed=None, interpolate='linear'):
         if time is None:
             time = npoints
         if seed is None:
@@ -47,7 +47,7 @@ class DataFactory:
         for f, a in zip(freq, ampl):
             y = np.random.randn(2*f+2)*a
             x = np.linspace(0, npoints-1, len(y))
-            inter = interp.interp1d(x, y, 'cubic')
+            inter = interp.interp1d(x, y, interpolate)
             valsinter = inter(range(npoints))
             vals += valsinter
         return Signal(np.linspace(time/npoints, time, npoints), vals)
