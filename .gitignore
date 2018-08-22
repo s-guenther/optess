@@ -8,3 +8,4 @@ stahlwerk*
 /dist/
 *egg*
 build/
+venv/
