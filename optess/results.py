@@ -4,6 +4,7 @@ from collections import namedtuple
 from random import randint
 import os
 import pickle
+import copy
 
 from .utility import make_two_empty_axes
 from .signal import Signal
@@ -204,6 +205,7 @@ class NoResults:
 
 
 _Dim = namedtuple('_Dim', 'power energy')
+_Norm = namedtuple('_Norm', 'power energy')
 _SignalParameters = namedtuple('_SignalParameters', 'arv rms form crest')
 
 
@@ -215,6 +217,17 @@ class ReducedHybridResults:
 
         self.basedim = _Dim(optim_case.base.power, results.baseenergycapacity)
         self.peakdim = _Dim(optim_case.peak.power, results.peakenergycapacity)
+
+        single_power_min = self.basedim.power.min + self.peakdim.power.min
+        single_power_max = self.basedim.power.max + self.peakdim.power.max
+        single_energy = self.basedim.energy + self.peakdim.energy
+
+        self.basenorm = _Norm((self.basedim.power.min/single_power_min,
+                               self.basedim.power.max/single_power_max),
+                              self.basedim.energy/single_energy)
+        self.peaknorm = _Norm((self.peakdim.power.min/single_power_min,
+                               self.peakdim.power.max/single_power_max),
+                              self.peakdim.energy/single_energy)
 
         self.baselosses = max(abs(results.basesignedlosses).integrate())
         self.peaklosses = max(abs(results.peaksignedlosses).integrate())
@@ -289,3 +302,41 @@ class ReducedSingleResults:
         with open(sep.join([filename, fileend]), 'rb') as file:
             opt_case = pickle.load(file)
         return opt_case
+
+
+# TODO these functions only transform reduced results but not complete results
+def single_to_base_results(singlered):
+    hybridred = copy.copy(singlered)
+    hybridred.__class__ = ReducedHybridResults
+
+    hybridred.basedim = hybridred.dim
+    hybridred.peakdim = _Dim(0, 0)
+    hybridred.basenorm = _Norm(1, 1)
+    hybridred.peaknorm = _Norm(0, 0)
+    hybridred.baselosses = hybridred.losses
+    hybridred.peaklosses = 0
+    hybridred.baseparameters = hybridred.signalparameters
+    hybridred.peakparameters = _SignalParameters(0, 0, 0, 0)
+    hybridred.basecycles = hybridred.cycles
+    hybridred.peakcycles = 0
+    return hybridred
+
+
+def single_to_peak_results(singlered):
+    hybridred = copy.copy(singlered)
+    hybridred.__class__ = ReducedHybridResults
+
+    hybridred.peakdim = hybridred.dim
+    hybridred.basedim = _Dim(0, 0)
+    hybridred.peaknorm = _Norm(1, 1)
+    hybridred.basenorm = _Norm(0, 0)
+    hybridred.peaklosses = hybridred.losses
+    hybridred.baselosses = 0
+    hybridred.peakparameters = hybridred.signalparameters
+    hybridred.baseparameters = _SignalParameters(0, 0, 0, 0)
+    hybridred.peakcycles = hybridred.cycles
+    hybridred.basecycles = 1
+    return hybridred
+
+# TODO refactor Results and Reduced Results in a way that they are identical
+# TODO for Single and Hybrid --> Storage Results --> Hybrid takes two of them

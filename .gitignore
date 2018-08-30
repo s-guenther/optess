@@ -9,3 +9,4 @@ stahlwerk*
 *egg*
 build/
 venv/
+*.lp

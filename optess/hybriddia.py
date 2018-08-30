@@ -6,15 +6,51 @@ from numpy import linspace, trapz
 import multiprocessing as mp
 from datetime import datetime
 import os
+import time
 from matplotlib import pyplot as plt
-from collections import defaultdict
 import pickle
+import textwrap
+from tqdm import tqdm
+import copy
 
 from .optimize_ess import OptimizeSingleESS, OptimizeHybridESS
 from .signal import Signal
 from .storage import Storage
 from .objective import Objective, Solver
-from .results import ReducedHybridResults, ReducedSingleResults
+from .results import ReducedHybridResults, ReducedSingleResults, \
+                     single_to_base_results, single_to_peak_results
+
+
+DIMTOL = 1 + 1e-6
+CUTS = (0.10, 0.25, 0.4, 0.5, 0.6, 0.75, 0.85, 0.95)
+CURVES = 4
+
+
+def print_resources():
+    ns = [1000, 2000, 4000, 6000, 9000, 13000, 20000, 30000, 40000, 55000,
+          80000, 115000, 140000, 175000, 200000, 230000]
+    mems = [0.3, 0.5, 0.8, 1.2, 1.8, 3.2, 4.3, 7.3, 10.6, 14.8, 21, 30.2, 36,
+            45.5, 51.5, 61]
+    cpus = [1, 1, 1, 1, 1, 2, 2, 3, 4, 8, 8, 12, 12, 16, 16, 16]
+    intromsg = "Depending on the length 'n' of the dataset or load profile, " \
+               "a different amount of memory/RAM 'mem' is allocated by the " \
+               "optimisation and a different amount of CPUs 'cpu' is " \
+               "advised to use. Performing the optimisation with less mem " \
+               "will result in swapping and drastically increased " \
+               "calculation times. Performing the optimisation with less " \
+               "cpu is not as severe but also noticable. Be aware that the " \
+               "operating system also uses some RAM. If you compute with " \
+               "parallel workers, be aware that each worker needs the " \
+               "specified amount of cpu and ram. If you have a cluster with " \
+               "a torque scheduling system available ensure that the " \
+               "correct '.torquesetup' file is provided."
+    for line in textwrap.wrap(intromsg):
+        print(line)
+    print('\n')
+    print('{:>8}{:>8}{:>7}'.format('n', 'mem', 'cpu'))
+    print('-'*23)
+    for n, mem, cpu in zip(ns, mems, cpus):
+        print('{:>8}{:>8}{:>7}'.format(n, mem, cpu))
 
 
 class PointOutsideAreaError(ValueError):
@@ -23,29 +59,15 @@ class PointOutsideAreaError(ValueError):
     pass
 
 
-class OnTheFlyDict(defaultdict):
-    """Performs for a specific cut which is missing in the inter/nointer
-    dict of HybridDia the adequate calculation and adds it the dict"""
-    def __init__(self, hybdia, strategy):
-        super().__init__()
-        self.hybdia = hybdia
-        self.strategy = strategy
-
-    def __missing__(self, key):
-        optim_case = self.hybdia.calculate_cut(key, self.strategy, True)
-        return optim_case
-
-
 class HybridDia:
     # noinspection PyArgumentList
     def __init__(self, signal, singlestorage, objective, solver='gurobi',
-                 name=None, calc_single_at_init=True, save_to_disc=True,
-                 nprocesses=None):
+                 name=None, save_opt_results=True):
         self.signal = Signal(signal)
         self.storage = Storage(singlestorage)
         self.objective = Objective(objective)
         self.solver = Solver(solver)
-        self._save_to_disc = save_to_disc
+        self._save_opt_results = save_opt_results
 
         if name is None:
             self.name = datetime.now().strftime('HybDia-%y%m%d-%H%M%S')
@@ -55,157 +77,15 @@ class HybridDia:
         if not os.path.isdir(self.name):
             os.mkdir(self.name)
 
-        if calc_single_at_init:
-            self.single = self.calculate_single()
-            self.energycapacity = self.single.dim.energy
-        else:
-            self.single = None
-            self.energycapacity = None
+        self.energycapacity = None
+        self.powercapacity = self.storage.power.max
 
-        # self.inter = OnTheFlyDict(self, 'inter')
-        # self.nointer = OnTheFlyDict(self, 'nointer')
+        self.single = None
         self.inter = dict()
         self.nointer = dict()
         self.area = dict()
 
-        self.powercapacity = self.storage.power.max
-
-        if nprocesses is None:
-            self._nprocesses = mp.cpu_count()
-        else:
-            self._nprocesses = nprocesses
-
-    def calculate_single(self):
-        single = OptimizeSingleESS(self.signal, self.storage,
-                                   self.objective, self.solver)
-        single.solve_pyomo_model()
-        self.energycapacity = single.results.energycapacity
-        results = ReducedSingleResults(single, savepath=self.name,
-                                       save_to_disc=self._save_to_disc)
-        return results
-
-    def calculate_cut(self, cut, strategy='inter', add_to_internal_list=True):
-        signal = self.signal
-        base = cut*self.storage
-        peak = (1 - cut)*self.storage
-        objective = self.objective
-        solver = self.solver
-
-        optim_case = OptimizeHybridESS(signal, base, peak, objective,
-                                       strategy, solver)
-        optim_case.solve_pyomo_model()
-
-        results = ReducedHybridResults(optim_case, savepath=self.name,
-                                       save_to_disc=self._save_to_disc)
-
-        if add_to_internal_list:
-            if strategy == 'inter':
-                self.inter[cut] = results
-            elif strategy == 'nointer':
-                self.nointer[cut] = results
-        return results
-
-    def _parallel_both_cuts(self, cut):
-        print('Starting cut={}'.format(cut))
-        inter = self.calculate_cut(cut, 'inter',
-                                   add_to_internal_list=False)
-        nointer = self.calculate_cut(cut, 'nointer',
-                                     add_to_internal_list=False)
-        print('Ending cut={}'.format(cut))
-        return cut, inter, nointer
-
-    def calculate_curves(self, cuts=(0.01, 0.2, 0.4, 0.5, 0.6, 0.8, 0.99)):
-        with mp.Pool(processes=self._nprocesses) as pool:
-            res = pool.map(self._parallel_both_cuts, cuts)
-        print('Finished parallel Hybrid Curve Calculation')
-
-        for cut, inter, nointer in res:
-            self.inter[cut] = inter
-            self.nointer[cut] = nointer
-
-    def calculate_area(self, raster=(7, 7)):
-        """Calculates points within the hybridisation area to determine the
-        cycle map, raster describes the number of number of points that will
-        be generated in power and energy direction"""
-
-        if not self.inter:
-            self.calculate_curves()
-
-        powercap = self.powercapacity
-        energycap = self.energycapacity
-
-        def raster_vector(npoints):
-            return linspace(1/(npoints+2), (npoints+1)/(npoints+2), npoints)
-
-        powers = raster_vector(raster[0])*powercap
-        energies = raster_vector(raster[1])*energycap
-
-        # Filter point list
-        points = itertools.product(energies, powers)
-        filteredpoints = []
-        for point in points:
-            if self.is_point_in_area(*point):
-                filteredpoints.append(point)
-        filteredpoints = tuple(filteredpoints)
-
-        # res = []
-        # for point in filteredpoints:
-        #     res.append(self._parallel_point(point))
-        with mp.Pool(processes=self._nprocesses) as pool:
-            res = pool.map(self._parallel_point, filteredpoints)
-        print('Finished Parallel Area Calculation')
-
-        for energy, power, optim_case in res:
-            self.area[(energy, power)] = optim_case
-
-    def is_point_in_area(self, energy, power):
-        """Return True if a point is within the hybridisation area."""
-        if not self.inter:
-            self.calculate_curves()
-
-        powercap = self.powercapacity
-        cut = power/powercap
-        if cut < 0 or cut > 1:
-            return False
-
-        # Interpolate Hybridisation Curve with given points
-        hcuts = sorted(self.inter.keys())
-        henergies = [self.inter[hcut].basedim.energy for hcut in hcuts]
-        hcurve = interp.interp1d(hcuts, henergies, 'linear')
-
-        minenergy = self.energycapacity*cut  # left side of area at spec. cut
-        maxenergy = hcurve(cut)  # right side of area at specified cut
-
-        return minenergy <= energy <= maxenergy
-
-    def _parallel_point(self, point):
-        print('Start calculating area point {}'.format(point))
-        optim_case = self.calculate_point(*point, add_to_internal_list=False)
-        print('End calculating area point {}'.format(point))
-        energy, power = point[0], point[1]
-        return energy, power, optim_case
-
-    def calculate_point(self, energy, power, add_to_internal_list=True):
-        """The optimisation problem is solved for this point defined by
-        power and energy."""
-        cut = power/self.powercapacity
-        base = cut*self.storage
-        peak = (1-cut)*self.storage
-        optim_case = OptimizeHybridESS(self.signal, base, peak,
-                                       self.objective, solver=self.solver)
-
-        baseenergy = energy
-        peakenergy = self.energycapacity - energy
-        optim_case.solve_pyomo_model(baseenergy, peakenergy)
-
-        results = ReducedHybridResults(optim_case, savepath=self.name,
-                                       save_to_disc=self._save_to_disc)
-
-        if add_to_internal_list:
-            self.area[(power, energy)] = results
-
-        return results
-
+    # --- Properties ---
     @property
     def hybridpotential(self):
         cuts = sorted(self.inter.keys())
@@ -225,6 +105,237 @@ class HybridDia:
         rpot = 2/singleenergy*trapz(energies, x=cuts) - 1
         return self.hybridpotential - rpot
 
+    # --- Compute Function to calculate complete diagram ---
+    def compute(self, cuts=CUTS, curves=CURVES):
+        """This function computes: (1) The single optimizsation to gain the
+        upper right point of the hybridisation diagram; (2) The
+        hybridisation curve at specified cuts; (3) Points within the area to
+        determine cyclisation.
+        For standard values of cuts, see module.CUTS.
+        For generating the hybridisation diagram, many separate and mostly
+        independend optimisations have to be solved. For this process,
+        3 different computation routines are available: 'self.compute_serial',
+        'self.compute_parallel' or 'self.compute_torque'. Depending on the
+        system you are working on and dataset you are working with
+        computation routines will differ in speed. This function deferres
+        execution to 'self.compute_serial'. See help of specialized
+        functions for more information."""
+        self.compute_serial(cuts=cuts, curves=curves)
+
+    def compute_serial(self, cuts=CUTS, curves=CURVES):
+        """See 'self.compute' for more information. Each optimisation is
+        done one after another. This will be the slowest procedure if enough
+        hardware ressources are available. See 'module.print_resources()' to
+        estimate required resources."""
+        # 10ms sleep to ensure correct text flushing of print and tqdm
+        print('Calculate Single...', flush=True)
+        time.sleep(0.01)
+        for _ in tqdm([None]):
+            self.calculate_single()
+        self._add_extreme_points()
+
+        time.sleep(0.01)
+        print('Calculate hybrid curve with inter-storage power flow...',
+              flush=True)
+        time.sleep(0.01)
+        for cut in tqdm(cuts):
+            self.calculate_point_at_curve(cut, 'inter')
+
+        time.sleep(0.01)
+        print('Calculate hybrid curve without inter-storage power flow...',
+              flush=True)
+        time.sleep(0.01)
+        for cut in tqdm(cuts):
+            self.calculate_point_at_curve(cut, 'nointer')
+        points = self.get_points_in_area(curves=curves)
+
+        time.sleep(0.01)
+        print('Calculate points within area...', flush=True)
+        time.sleep(0.01)
+        for point in tqdm(points):
+            self.calculate_point_in_area(*point)
+
+        time.sleep(0.01)
+        print('... all done', flush=True)
+
+    def compute_parallel(self, cuts=CUTS, curves=CURVES, workers=4):
+        """See 'self.compute' for more information. Optimisations are
+        computed in parallel with a pool of 'workers'. See
+        'module.print_ressources()' to determine the right amount of
+        workers."""
+        # 10ms sleep to ensure correct text flushing of print and tqdm
+
+        # --- Calculate Single ---
+        print('Calculate Single...', flush=True)
+        time.sleep(0.01)
+        for _ in tqdm([None]):
+            self.calculate_single()
+        self._add_extreme_points()
+
+        # --- Calculate Hybrid Curve w/ inter-storage power flow ---
+        time.sleep(0.01)
+        print('Calculate hybrid curve with inter-storage power flow...',
+              flush=True)
+        time.sleep(0.01)
+
+        mp.freeze_support()  # for Windows support
+
+        with mp.Pool(processes=workers, initializer=tqdm.set_lock,  # WinSup
+                     initargs=(mp.RLock(),)) as pool:
+            allinter = list(tqdm(pool.imap(self._calculate_inter, cuts),
+                                 total=len(cuts)))
+        for cut, inter in allinter:
+            self.inter[cut] = inter
+
+        # --- Calculate Hybrid Curve w/o inter-storage power flow ---
+        time.sleep(0.01)
+        print('Calculate hybrid curve without inter-storage power flow...',
+              flush=True)
+        time.sleep(0.01)
+
+        with mp.Pool(processes=workers, initializer=tqdm.set_lock,  # WinSup
+                     initargs=(mp.RLock(),)) as pool:
+            allnointer = list(tqdm(pool.imap(self._calculate_nointer, cuts),
+                                   total=len(cuts)))
+        for cut, nointer in allnointer:
+            self.nointer[cut] = nointer
+
+        points = self.get_points_in_area(curves=curves)
+
+        # --- Calculates points in area ---
+        time.sleep(0.01)
+        print('Calculate points within area...', flush=True)
+        time.sleep(0.01)
+
+        with mp.Pool(processes=workers, initializer=tqdm.set_lock,  # WinSup
+                     initargs=(mp.RLock(),)) as pool:
+            allarea = list(tqdm(pool.imap(self._calculate_area_point, points),
+                                total=len(points)))
+        for point, area in allarea:
+            self.area[point] = area
+
+        # --- Finish line ---
+        time.sleep(0.01)
+        print('... all done', flush=True)
+
+    def compute_torque(self, cuts=CUTS, curves=CURVES,
+                       setupfile=None, wt=1.0, mem=1.0):
+        """See 'self.compute' for more information. The single optimisations
+        are delegated to a torque batch system at a cluster, assuming that the
+        shell command 'qsub' is available. Provide a path to 'setupfile',
+        else, the file will be searched in the current working directory.
+        'wt' scales the predefined walltime, 'mem' the predefined RAM."""
+        pass
+
+    # --- unary calculation function, calculates only a single point ---
+    def calculate_single(self, add_to_dia=True):
+        single = OptimizeSingleESS(self.signal, self.storage,
+                                   self.objective, self.solver)
+        single.solve_pyomo_model()
+        self.energycapacity = single.results.energycapacity
+        results = ReducedSingleResults(single, savepath=self.name,
+                                       save_to_disc=self._save_opt_results)
+        if add_to_dia:
+            self.single = results
+        return results
+
+    def calculate_point_at_curve(self, cut, strategy='inter', add_to_dia=True):
+        signal = self.signal
+        base = cut*self.storage*DIMTOL
+        peak = (1-cut)*self.storage*DIMTOL
+        objective = self.objective
+        solver = self.solver
+
+        optim_case = OptimizeHybridESS(signal, base, peak, objective,
+                                       strategy, solver)
+        optim_case.solve_pyomo_model()
+
+        results = ReducedHybridResults(optim_case, savepath=self.name,
+                                       save_to_disc=self._save_opt_results)
+
+        if add_to_dia:
+            if strategy == 'inter':
+                self.inter[cut] = results
+            elif strategy == 'nointer':
+                self.nointer[cut] = results
+        return results
+
+    def calculate_point_in_area(self, cut, enorm, add_to_dia=True):
+        """The optimisation problem is solved for this point defined by
+        power and energy."""
+        base = cut * self.storage * DIMTOL
+        peak = (1 - cut) * self.storage * DIMTOL
+        optim_case = OptimizeHybridESS(self.signal, base, peak,
+                                       self.objective, solver=self.solver)
+
+        baseenergy = enorm * self.energycapacity * DIMTOL
+        peakenergy = (1 - enorm) * self.energycapacity * DIMTOL
+        optim_case.solve_pyomo_model(baseenergy, peakenergy)
+
+        results = ReducedHybridResults(optim_case, savepath=self.name,
+                                       save_to_disc=self._save_opt_results)
+
+        if add_to_dia:
+            self.area[(cut, enorm)] = results
+
+        return results
+
+    # --- auxilliary functions ---
+    def get_points_in_area(self, curves=CURVES):
+        """Returns points which are within the area enclose by
+        the hybridisation curve and the single storage specific power line.
+        Points are returned between the power cut points and the specific
+        power line (which is also included) in an equidistant manner for
+        this power cut. Parameter 'curves' describes the number of points
+        between the hybridisation curve and the specific power line per cut"""
+        cuts = set(self.inter.keys())
+        cuts.remove(0)
+        cuts.remove(1)
+        points = set()
+        for cut in cuts:
+            single = cut
+            base = self.inter[cut].basenorm.energy
+            for ii in range(curves):
+                enorm = single + (base - single)/curves*ii
+                points.add((cut, enorm))
+        return list(points)
+
+    def is_point_in_area(self, cut, enorm):
+        """Return True if a point is within the hybridisation area."""
+        if cut < 0 or cut > 1 or enorm < 0 or enorm > 1:
+            return False
+
+        # Interpolate Hybridisation Curve with given points
+        cuts = sorted(self.inter.keys())
+        enorms = [self.inter[hcut].basenorm.energy for hcut in cuts]
+        hcurve = interp.interp1d(cuts, enorms, 'linear')
+
+        minenorm = cut  # left side of area at spec. cut
+        maxenorm = hcurve(cut)  # right side of area at specified cut
+
+        return minenorm <= enorm <= maxenorm
+
+    def _calculate_inter(self, cut):
+        return cut, self.calculate_point_at_curve(cut, 'inter', False)
+
+    def _calculate_nointer(self, cut):
+        return cut, self.calculate_point_at_curve(cut, 'nointer', False)
+
+    def _calculate_area_point(self, point):
+        return point, self.calculate_point_in_area(*point, False)
+
+    def _add_extreme_points(self):
+        """Adds to inter and nointer dictionary the power cuts 0 and 1 which
+        can be derived from single point calculation without the need to
+        calculate it from hybrid optimisation"""
+        # Use duck typing and generate a fake reduced hybrid result with
+        # the help of reduced single results
+        self.inter[0] = single_to_peak_results(self.single)
+        self.inter[1] = single_to_base_results(self.single)
+        self.nointer[0] = copy.copy(self.inter[0])
+        self.nointer[1] = copy.copy(self.inter[1])
+
+    # --- output/save/load functions ---
     def pprint(self):
         # TODO implement
         pass
@@ -273,11 +384,12 @@ class HybridDia:
             xvec.append(x)
             yvec.append(y)
             cycvec.append(cycles[0])
-        for (x, y), results in self.area.items():
+        for (y, x), results in self.area.items():
             cbase, cpeak = (results.basecycles, results.peakcycles)
-            ax.text(x, y, '{:.2f}'.format(cpeak))
-            xvec.append(x)
-            yvec.append(y)
+            ax.text(x*self.energycapacity, y*self.powercapacity,
+                    '{:.2f}'.format(cpeak))
+            xvec.append(x*self.energycapacity)
+            yvec.append(y*self.powercapacity)
             cycvec.append(cbase)
         cycsingle = self.single.cycles
         xvec.append(self.energycapacity)

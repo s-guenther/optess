@@ -12,5 +12,6 @@ setup(name='optess',
       author_email='sebastian.guenther@ifes.uni-hannover.de',
       license='GPLv3',
       packages=['optess'],
-      install_requires=['matplotlib', 'pyomo', 'numpy', 'scipy', 'overload'],
+      install_requires=['matplotlib', 'pyomo', 'numpy', 'scipy', 'overload',
+                        'tqdm'],
       zip_safe=False)
