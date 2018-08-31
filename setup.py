@@ -13,5 +13,5 @@ setup(name='optess',
       license='GPLv3',
       packages=['optess'],
       install_requires=['matplotlib', 'pyomo', 'numpy', 'scipy', 'overload',
-                        'tqdm'],
+                        'tqdm', 'xmltodict'],
       zip_safe=False)

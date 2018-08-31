@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 
-import itertools
 import scipy.interpolate as interp
-from numpy import linspace, trapz
+from numpy import trapz
 import multiprocessing as mp
 from datetime import datetime
 import os
@@ -19,6 +18,11 @@ from .storage import Storage
 from .objective import Objective, Solver
 from .results import ReducedHybridResults, ReducedSingleResults, \
                      single_to_base_results, single_to_peak_results
+from .torque import Torque
+
+
+class DataNotComputedError:
+    pass
 
 
 DIMTOL = 1 + 1e-6
@@ -53,12 +57,6 @@ def print_resources():
         print('{:>8}{:>8}{:>7}'.format(n, mem, cpu))
 
 
-class PointOutsideAreaError(ValueError):
-    """Raised if a point within the Hybridisation Area shall be calculated,
-    but the point is outside"""
-    pass
-
-
 class HybridDia:
     # noinspection PyArgumentList
     def __init__(self, signal, singlestorage, objective, solver='gurobi',
@@ -84,6 +82,8 @@ class HybridDia:
         self.inter = dict()
         self.nointer = dict()
         self.area = dict()
+
+        self.torque = None
 
     # --- Properties ---
     @property
@@ -219,13 +219,36 @@ class HybridDia:
         print('... all done', flush=True)
 
     def compute_torque(self, cuts=CUTS, curves=CURVES,
-                       setupfile=None, wt=1.0, mem=1.0):
+                       setupfile=None, wt=1.0, mem=1.0, returninfo=True):
         """See 'self.compute' for more information. The single optimisations
         are delegated to a torque batch system at a cluster, assuming that the
         shell command 'qsub' is available. Provide a path to 'setupfile',
         else, the file will be searched in the current working directory.
         'wt' scales the predefined walltime, 'mem' the predefined RAM."""
-        pass
+
+        self.torque = Torque(self, setupfile, wt, mem)
+
+        done = self.torque.qsub(cuts, curves)
+
+        if done and returninfo:
+            msg = 'All jobs have been submitted to the scheduling system. ' \
+                  'You can savely exit Python now. The HybridDia object is ' \
+                  'saved under its name at the path specified by ' \
+                  ' "setupfile" and you can load it again at any time with ' \
+                  '"HybridDia.load(/path/to/name.hyb)". To see the ' \
+                  'progress of the computation, type "hyb.torque.status()", ' \
+                  'or see the logfile "path/to/name.log"\n'
+            for line in textwrap.wrap(msg):
+                print(line)
+            print('The following jobs have been submitted:')
+            print('Single:')
+            print(self.torque.singleid)
+            print('Curve (w/ inter-storage power flow)')
+            print(self.torque.interids)
+            print('Curve (w/o inter-storage power flow)')
+            print(self.torque.nointerids)
+            print('Join curve, join area, cleanup')
+            print(self.torque.utilityids)
 
     # --- unary calculation function, calculates only a single point ---
     def calculate_single(self, add_to_dia=True):
@@ -341,10 +364,8 @@ class HybridDia:
         pass
 
     def pplot(self):
-        if not self.inter or not self.nointer:
-            self.calculate_curves()
-        # if not self.area:
-        #     self.calculate_area()
+        if not self.inter or not self.nointer or not self.area:
+            raise DataNotComputedError
 
         # TODO remove duplicate code, refactor
         powerinter = []
