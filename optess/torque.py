@@ -6,7 +6,6 @@ from scipy.interpolate import interp1d
 import xmltodict
 from glob import glob
 import os
-import sys
 from subprocess import check_output
 
 
@@ -22,16 +21,12 @@ class TorqueSetupIncompleteError:
 
 
 SINGLE_SH = '''
-#!/usr/bin/env bash
-
-echo $(date) Starting single calculation >> ${NAME}.log
-
-${MODULES}
+#!/bin/bash -login
 
 cd ${WORKDIR}
-
+echo $(date) Starting single calculation >> ${NAME}.log
+module load ${MODULES}
 python3 tmp_${NAME}/single.py ${NAME}.hyb >> ${NAME}.log
-
 echo $(date) Finished single calculation >> ${NAME}.log
 '''[1:-1]
 
@@ -129,7 +124,8 @@ def qsub(file, parameters=None, pbs=None):
     else:
         pbsstring = ''
 
-    output = check_output(['qsub', pbsstring, parastring, file])
+    command = ' '.join(['qsub', pbsstring, parastring, file])
+    output = check_output(command, shell=True)
     jobid = output.decode('utf-8')[:-1]
     return jobid
 
@@ -174,6 +170,8 @@ class Torque:
         nodes = 1
 
         pbs = list()
+        pbs.append('-N {}_single'.format(self.name))
+        pbs.append('-o {}/single.o'.format(self.logdir))
         pbs.append('-M {}'.format(self.mail))
         pbs.append('-m b')
         pbs.append('-j oe')
@@ -205,9 +203,12 @@ class Torque:
         return jobid
 
     def initialize(self, hyb):
-        os.mkdir(self.savedir)
-        os.mkdir(self.tmpdir)
-        os.mkdir(self.logdir)
+        if not os.path.isdir(self.savedir):
+            os.mkdir(self.savedir)
+        if not os.path.isdir(self.tmpdir):
+            os.mkdir(self.tmpdir)
+        if not os.path.isdir(self.logdir):
+            os.mkdir(self.logdir)
         hyb.save(os.path.join(self.workdir, '{}.hyb'.format(self.name)))
         filenames = ('single.sh', 'single.py', 'curve.sh', 'curve.py',
                      'area.sh', 'area.py', 'join_curve.sh', 'join_curve.py',
@@ -252,7 +253,7 @@ class Torque:
 
         workdir = setup['workdir']
         architecture = setup['architecture']
-        modules = 'module load ' + '; module load '.join(setup['module'])
+        modules = ' '.join(setup['module'])
         mail = setup['mail']
         resources = dict()
         for calc in ['single', 'curve', 'area']:

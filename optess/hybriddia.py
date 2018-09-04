@@ -339,13 +339,15 @@ class HybridDia:
         return minenorm <= enorm <= maxenorm
 
     def _calculate_inter(self, cut):
-        return cut, self.calculate_point_at_curve(cut, 'inter', False)
+        return cut, self.calculate_point_at_curve(cut, 'inter',
+                                                  add_to_dia=False)
 
     def _calculate_nointer(self, cut):
-        return cut, self.calculate_point_at_curve(cut, 'nointer', False)
+        return cut, self.calculate_point_at_curve(cut, 'nointer',
+                                                  add_to_dia=False)
 
     def _calculate_area_point(self, point):
-        return point, self.calculate_point_in_area(*point, False)
+        return point, self.calculate_point_in_area(*point, add_to_dia=False)
 
     def _add_extreme_points(self):
         """Adds to inter and nointer dictionary the power cuts 0 and 1 which
