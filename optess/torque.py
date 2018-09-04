@@ -2,10 +2,12 @@
 written to hdd and then executed"""
 
 from collections import namedtuple
+from scipy.interpolate import interp1d
 import xmltodict
 from glob import glob
 import os
 import sys
+from subprocess import check_output
 
 
 class NoTorqueSetupFileFoundError(FileNotFoundError):
@@ -20,15 +22,40 @@ class TorqueSetupIncompleteError:
 
 
 SINGLE_SH = '''
-Shell file for single
-calculation
+#!/usr/bin/env bash
+
+echo $(date) Starting single calculation >> ${NAME}.log
+
+${MODULES}
+
+cd ${WORKDIR}
+
+python3 tmp_${NAME}/single.py ${NAME}.hyb >> ${NAME}.log
+
+echo $(date) Finished single calculation >> ${NAME}.log
 '''[1:-1]
 
 
 SINGLE_PY = '''
-Python file for
-single calculation
+#!/usr/bin/env python3
+
+import optess as oe
+import sys
+
+
+def single(filename):
+    """Loads the HybridDia Object specified in filename, performs single
+    calculation, saves it."""
+    hyb = oe.HybridDia.load(filename)
+    hyb.calculate_single()
+    hyb.save()
+
+
+if __name__ == '__main__':
+    FILENAME = sys.argv[1]
+    single(FILENAME)
 '''[1:-1]
+
 
 CURVE_SH = '''
 Shell file for curve
@@ -55,37 +82,55 @@ area calculation
 
 
 JOIN_CURVE_SH = '''
-Python file for
-area calculation
+Shell file for
+join curve
 '''[1:-1]
 
 
 JOIN_CURVE_PY = '''
 Python file for
-area calculation
+join curve
 '''[1:-1]
 
 
 JOIN_AREA_SH = '''
-Python file for
-area calculation
+Shell file for
+join area
 '''[1:-1]
 
 
 JOIN_AREA_PY = '''
 Python file for
-area calculation
+join area
 '''[1:-1]
 
 
 CLEANUP_SH = '''
-Python file for
-area calculation
+Shell file for
+cleanup
 '''[1:-1]
 
 
 def qsub(file, parameters=None, pbs=None):
-    jobid = None
+    """Submits the file 'file' with qsub, where the paramaters
+    'parameters' are handed to the file and where the pbs directives
+    'pbs' are used. 'parameters' is a string name:value pair dict, 'pbs' is a
+    list of strings."""
+    if parameters:
+        paralist = []
+        for para, val in parameters.items():
+            paralist.append('{}="{}"'.format(para, val))
+        parastring = '-v ' + ','.join(paralist)
+    else:
+        parastring = ''
+
+    if pbs:
+        pbsstring = ' '.join(pbs)
+    else:
+        pbsstring = ''
+
+    output = check_output(['qsub', pbsstring, parastring, file])
+    jobid = output.decode('utf-8')[:-1]
     return jobid
 
 
@@ -100,11 +145,11 @@ class Torque:
 
         self.scale = _Scale(wt, mem)
 
-        setup = self.read_setup(setupfile)
-        self.workdir, self.modules, self.pbs, self.mail, self.resources = setup
+        self.workdir, self.architecture, self.modules, \
+            self.mail, self.resources = self.read_setup(setupfile)
         self.savedir = os.path.join(self.workdir, self.name)
-        self.tmpdir = os.path.join(self.savedir, 'tmp_{}'.format(self.name))
-        self.logdir = os.path.join(self.savedir, 'log_{}'.format(self.name))
+        self.tmpdir = os.path.join(self.workdir, 'tmp_{}'.format(self.name))
+        self.logdir = os.path.join(self.workdir, 'log_{}'.format(self.name))
 
         self.singleid = None
         self.interids = list()
@@ -115,11 +160,28 @@ class Torque:
         self.initialize(hyb)
 
     def qsub(self, cuts, curves):
-        # do all
+        self.singleid = self.qsub_single()
         return True
 
     def qsub_single(self):
-        jobid = None
+        paras = dict()
+        paras['MODULES'] = self.modules
+        paras['NAME'] = self.name
+        paras['WORKDIR'] = self.workdir
+
+        time, cores, ram = self.get_resources(self.npoints, 'single')
+        arch = self.architecture
+        nodes = 1
+
+        pbs = list()
+        pbs.append('-M {}'.format(self.mail))
+        pbs.append('-m b')
+        pbs.append('-j oe')
+        pbs.append('-l nodes={}:{}:ppn={}'.format(nodes, arch, cores))
+        pbs.append('-l mem={}'.format(ram))
+        pbs.append('-l walltime={}'.format(time))
+
+        jobid = qsub(os.path.join(self.tmpdir, 'single.sh'), paras, pbs)
         return jobid
 
     def qsub_point_at_curve(self, cut, strategy='inter'):
@@ -128,7 +190,7 @@ class Torque:
 
     def qsub_point_in_area(self, curves):
         jobid = None
-        return jobids
+        return jobid
 
     def qsub_join_curve(self):
         jobid = None
@@ -143,7 +205,6 @@ class Torque:
         return jobid
 
     def initialize(self, hyb):
-        # TODO change path to setuppath
         os.mkdir(self.savedir)
         os.mkdir(self.tmpdir)
         os.mkdir(self.logdir)
@@ -155,12 +216,22 @@ class Torque:
                     AREA_PY, JOIN_CURVE_SH, JOIN_CURVE_PY, JOIN_AREA_SH,
                     JOIN_AREA_PY, CLEANUP_SH)
         for filename, content in zip(filenames, contents):
-            with open(os.path.join(tmpdir, filename), 'w') as file:
+            with open(os.path.join(self.tmpdir, filename), 'w') as file:
                 file.write(content)
 
         logfilename = os.path.join(self.workdir, '{}.log'.format(self.name))
-        with open(logfilename) as logfile:
+        with open(logfilename, 'w') as logfile:
             logfile.write('Initialized all directories\n')
+
+    def get_resources(self, n, calctype):
+        points, times, cpus, rams = self.resources[calctype]
+        cpu = str(int(interp1d(points, cpus, 'linear')(n)))
+        ram = str(int(interp1d(points, rams, 'linear')(n))) + 'MB'
+        ftime = int(interp1d(points, times, 'linear')(n))
+        time = '{:02d}:{:02d}:{:02d}'.format(ftime//3600,
+                                             (ftime - ftime//3600*3600)//60,
+                                             ftime % 60)  # hours, min, sec
+        return time, cpu, ram
 
     def status(self):
         pass
@@ -176,15 +247,12 @@ class Torque:
             except IndexError:
                 raise NoTorqueSetupFileFoundError
 
-        with open(setupfile, 'wb') as file:
-            setup = xmltodict.parse(file.read())
+        with open(setupfile, 'rb') as file:
+            setup = xmltodict.parse(file.read())['torquesetup']
 
         workdir = setup['workdir']
-        modules = 'module load ' + '\nmodule load '.join(setup['module'])
-        try:
-            pbs = ' '.join(setup['pbs'])
-        except 'KeyError':
-            pbs = ''
+        architecture = setup['architecture']
+        modules = 'module load ' + '; module load '.join(setup['module'])
         mail = setup['mail']
         resources = dict()
         for calc in ['single', 'curve', 'area']:
@@ -194,7 +262,7 @@ class Torque:
                            _string_to_numlist(setup[calc]['cpu']),
                            _string_to_numlist(setup[calc]['ram']))
 
-        return workdir, modules, pbs, mail, resources
+        return workdir, architecture, modules, mail, resources
 
 
 def _string_to_numlist(string):
