@@ -203,12 +203,16 @@ class Torque:
         return jobid
 
     def initialize(self, hyb):
+        if not os.path.isdir(self.workdir):
+            os.mkdir(self.workdir)
         if not os.path.isdir(self.savedir):
             os.mkdir(self.savedir)
         if not os.path.isdir(self.tmpdir):
             os.mkdir(self.tmpdir)
         if not os.path.isdir(self.logdir):
             os.mkdir(self.logdir)
+        if os.path.isdir(self.name):
+            os.rmdir(self.name)
         hyb.save(os.path.join(self.workdir, '{}.hyb'.format(self.name)))
         filenames = ('single.sh', 'single.py', 'curve.sh', 'curve.py',
                      'area.sh', 'area.py', 'join_curve.sh', 'join_curve.py',
@@ -237,8 +241,7 @@ class Torque:
     def status(self):
         pass
 
-    @staticmethod
-    def read_setup(setupfile=None):
+    def read_setup(self, setupfile=None):
         """If no setupfile provided, try reading the first .torquesetup
         file in current directory. Parses the xml document and writes
         structure as dict to self._torquesetup"""
@@ -251,7 +254,8 @@ class Torque:
         with open(setupfile, 'rb') as file:
             setup = xmltodict.parse(file.read())['torquesetup']
 
-        workdir = setup['workdir']
+        basedir = os.path.join(setup['workdir'])
+        workdir = os.path.join(basedir, self.name)
         architecture = setup['architecture']
         modules = ' '.join(setup['module'])
         mail = setup['mail']
