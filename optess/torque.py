@@ -58,8 +58,8 @@ echo $(date) Starting curve calculation at cut ${CUT} ${STRATEGY} >> \
     ${NAME}.log
 cp ${WORKDIR}/${NAME}.hyb ${TMPDIR}/${NAME}_curve_${STRATEGY}_${CUT}.hyb
 module load ${MODULES}
-python3 ${TMPDIR}/curve.py ${NAME}_curve_${STRATEGY}_${CUT}.hyb \
-    ${STRATEGY} ${CUT} >> ${WORKDIR}${NAME}.log
+python3 ${TMPDIR}/curve.py ${TMPDIR}/${NAME}_curve_${STRATEGY}_${CUT}.hyb \
+    ${STRATEGY} ${CUT} >> ${WORKDIR}/${NAME}.log
 echo $(date) Finished curve calculation at cut ${CUT} ${STRATEGY} >> \
     ${NAME}.log
 '''[1:-1]
@@ -72,7 +72,7 @@ import optess as oe
 import sys
 
 
-def single(filename, strategy, cut):
+def curve(filename, strategy, cut):
     """Loads the HybridDia Object specified in filename, performs single
     calculation, saves it."""
     hyb = oe.HybridDia.load(filename)
@@ -83,8 +83,8 @@ def single(filename, strategy, cut):
 if __name__ == '__main__':
     FILENAME = sys.argv[1]
     STRATEGY = sys.argv[2]
-    CUT = float(sys.argv[3])
-    single(FILENAME, STRATEGY, CUT)
+    CUT = float('0.' + sys.argv[3])
+    curve(FILENAME, STRATEGY, CUT)
 '''[1:-1]
 
 
@@ -100,25 +100,25 @@ area calculation
 '''[1:-1]
 
 
-JOIN_CURVE_SH = '''
+MERGE_CURVE_SH = '''
 Shell file for
 join curve
 '''[1:-1]
 
 
-JOIN_CURVE_PY = '''
+MERGE_CURVE_PY = '''
 Python file for
 join curve
 '''[1:-1]
 
 
-JOIN_AREA_SH = '''
+MERGE_AREA_SH = '''
 Shell file for
 join area
 '''[1:-1]
 
 
-JOIN_AREA_PY = '''
+MERGE_AREA_PY = '''
 Python file for
 join area
 '''[1:-1]
@@ -211,21 +211,23 @@ class Torque:
         return jobid
 
     def qsub_point_at_curve(self, cut, strategy='inter'):
+        # TODO do not submit cut=0 or cut=1
+        cutstr = str(cut)[2:]
         paras = dict()
         paras['MODULES'] = self.modules
         paras['NAME'] = self.name
         paras['WORKDIR'] = self.workdir
         paras['TMPDIR'] = self.tmpdir
         paras['STRATEGY'] = strategy
-        paras['CUT'] = str(cut)
+        paras['CUT'] = cutstr
 
-        time, cores, ram = self.get_resources(self.npoints, 'single')
+        time, cores, ram = self.get_resources(self.npoints, 'curve')
         arch = self.architecture
         nodes = 1
 
         pbs = list()
-        pbs.append('-N {}_curve_{}_{}'.format(self.name, strategy, cut))
-        pbs.append('-o {}/curve_{}_{}.o'.format(self.logdir, strategy, cut))
+        pbs.append('-N {}_curve_{}_{}'.format(self.name, strategy, cutstr))
+        pbs.append('-o {}/curve_{}_{}.o'.format(self.logdir, strategy, cutstr))
         pbs.append('-j oe')
         pbs.append('-l nodes={}:{}:ppn={}'.format(nodes, arch, cores))
         pbs.append('-l mem={}'.format(ram))
@@ -239,11 +241,11 @@ class Torque:
         jobid = None
         return jobid
 
-    def qsub_join_curve(self):
+    def qsub_merge_curve(self):
         jobid = None
         return jobid
 
-    def qsub_join_area(self):
+    def qsub_merge_area(self):
         jobid = None
         return jobid
 
@@ -264,11 +266,11 @@ class Torque:
             os.rmdir(self.name)
         hyb.save(os.path.join(self.workdir, '{}.hyb'.format(self.name)))
         filenames = ('single.sh', 'single.py', 'curve.sh', 'curve.py',
-                     'area.sh', 'area.py', 'join_curve.sh', 'join_curve.py',
-                     'join_area.sh', 'join_area.py', 'cleanup.sh')
+                     'area.sh', 'area.py', 'merge_curve.sh', 'merge_curve.py',
+                     'merge_area.sh', 'merge_area.py', 'cleanup.sh')
         contents = (SINGLE_SH, SINGLE_PY, CURVE_SH, CURVE_PY, AREA_SH,
-                    AREA_PY, JOIN_CURVE_SH, JOIN_CURVE_PY, JOIN_AREA_SH,
-                    JOIN_AREA_PY, CLEANUP_SH)
+                    AREA_PY, MERGE_CURVE_SH, MERGE_CURVE_PY, MERGE_AREA_SH,
+                    MERGE_AREA_PY, CLEANUP_SH)
         for filename, content in zip(filenames, contents):
             with open(os.path.join(self.tmpdir, filename), 'w') as file:
                 file.write(content)
