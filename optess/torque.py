@@ -89,14 +89,37 @@ if __name__ == '__main__':
 
 
 AREA_SH = '''
-Shell file for area
-calculation
+#!/bin/bash -login
+cd ${WORKDIR}
+echo $(date) Starting area calculation \#${POINT} >> ${NAME}.log
+cp ${WORKDIR}/${NAME}.hyb ${TMPDIR}/${NAME}_area_${POINT}.hyb
+module load ${MODULES}
+python3 ${TMPDIR}/area.py ${TMPDIR}/${NAME}_area_${POINT}.hyb \
+    ${CURVES} ${POINT} >> ${WORKDIR}/${NAME}.log
+echo $(date) Finished area calculation \#${POINT} >> ${NAME}.log
 '''[1:-1]
 
 
 AREA_PY = '''
-Python file for
-area calculation
+#!/usr/bin/env python3
+
+import optess as oe
+import sys
+
+
+def area(filename, curves, pointnumber):
+    hyb = oe.HybridDia.load(filename)
+    points = hyb.get_points_in_area(curves)
+    point = points[pointnumber]
+    hyb.calculate_point_in_area(*point)
+    hyb.save(filename)
+
+
+if __name__ == '__main__':
+    FILENAME = sys.argv[1]
+    CURVES = int(sys.argv[2])
+    POINTNUMBER = int(sys.argv[3])
+    area(FILENAME, CURVES, POINTNUMBER)
 '''[1:-1]
 
 
@@ -130,6 +153,8 @@ def merge_curve(name):
         hybcut = oe.HybridDia.load(file)
         for key, val in hybcut.nointer.items():
             hyb.nointer[key] = val
+    # noinspection PyProtectedMember
+    hyb._add_extreme_points()
     hyb.save()
 
 
@@ -213,6 +238,9 @@ class Torque:
         for cut in cuts:
             self.nointerids.append(self.qsub_point_at_curve(cut, 'nointer'))
         self.utilityids.append(self.qsub_merge_curve())
+        npoints = len(cuts)*curves
+        for pointnumber in range(npoints):
+            self.areaids.append(self.qsub_point_in_area(curves, pointnumber))
         return True
 
     def qsub_single(self):
@@ -265,8 +293,29 @@ class Torque:
         jobid = qsub(os.path.join(self.tmpdir, 'curve.sh'), paras, pbs)
         return jobid
 
-    def qsub_point_in_area(self, curves):
-        jobid = None
+    def qsub_point_in_area(self, curves, pointnumber):
+        paras = dict()
+        paras['MODULES'] = self.modules
+        paras['NAME'] = self.name
+        paras['WORKDIR'] = self.workdir
+        paras['TMPDIR'] = self.tmpdir
+        paras['CURVES'] = curves
+        paras['POINT'] = pointnumber
+
+        time, cores, ram = self.get_resources(self.npoints, 'area')
+        arch = self.architecture
+        nodes = 1
+
+        pbs = list()
+        pbs.append('-N {}_area_{:02d}'.format(self.name, pointnumber))
+        pbs.append('-o {}/area_{:02d}.o'.format(self.logdir, pointnumber))
+        pbs.append('-j oe')
+        pbs.append('-l nodes={}:{}:ppn={}'.format(nodes, arch, cores))
+        pbs.append('-l mem={}'.format(ram))
+        pbs.append('-l walltime={}'.format(time))
+        pbs.append('-W depend=afterok:{}'.format(self.utilityids[0]))
+
+        jobid = qsub(os.path.join(self.tmpdir, 'area.sh'), paras, pbs)
         return jobid
 
     def qsub_merge_curve(self):

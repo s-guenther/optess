@@ -17,6 +17,8 @@ def merge_curve(name):
         hybcut = oe.HybridDia.load(file)
         for key, val in hybcut.nointer.items():
             hyb.nointer[key] = val
+    # noinspection PyProtectedMember
+    hyb._add_extreme_points()
     hyb.save()
 
 
