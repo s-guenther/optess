@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import scipy.interpolate as interp
-from numpy import trapz
+from numpy import trapz, floor
 import multiprocessing as mp
 from datetime import datetime
 import os
@@ -242,15 +242,15 @@ class HybridDia:
                 print(line)
             print('The following jobs have been submitted:')
             print('Single:')
-            print(self.torque.singleid)
-            print('Curve (w/ inter-storage power flow)')
-            print(self.torque.interids)
-            print('Curve (w/o inter-storage power flow)')
-            print(self.torque.nointerids)
+            print(' '*4, self.torque.singleid)
+            print('Curve (w/ inter-storage power flow):')
+            print(' '*4, self.torque.interids)
+            print('Curve (w/o inter-storage power flow):')
+            print(' '*4, self.torque.nointerids)
             print('Area:')
-            print(self.torque.areaids)
-            print('Join curve, join area, cleanup')
-            print(self.torque.utilityids)
+            print(' '*4, self.torque.areaids)
+            print('Join curve, join area/cleanup')
+            print(' '*4, self.torque.utilityids)
 
     # --- unary calculation function, calculates only a single point ---
     def calculate_single(self, add_to_dia=True):
@@ -321,7 +321,8 @@ class HybridDia:
             single = cut
             base = self.inter[cut].basenorm.energy
             for ii in range(curves):
-                enorm = single + (base - single)/curves*ii
+                enorm = float(floor((single + (base -
+                                    single)/curves*ii)*100)/100)
                 points.add((cut, enorm))
         return list(points)
 

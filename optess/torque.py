@@ -165,20 +165,39 @@ if __name__ == '__main__':
 
 
 MERGE_AREA_SH = '''
-Shell file for
-join area
+#!/bin/bash -login
+cd ${WORKDIR}
+echo $(date) Start merging area >> ${NAME}.log
+module load ${MODULES}
+python3 ${TMPDIR}/merge_area.py ${NAME} >> ${WORKDIR}/${NAME}.log
+echo $(date) Finished merging area >> ${NAME}.log
+echo Cleaning up... >> ${NAME}.log
+rm -rf ${TMPDIR}
+echo "All done" >> ${NAME}.log
 '''[1:-1]
 
 
 MERGE_AREA_PY = '''
-Python file for
-join area
-'''[1:-1]
+#!/usr/bin/env python3
+
+import optess as oe
+import sys
+import glob
 
 
-CLEANUP_SH = '''
-Shell file for
-cleanup
+def merge_area(name):
+    hyb = oe.HybridDia.load(name)
+    areafiles = glob.glob('tmp_{}/{}_area_*'.format(name, name))
+    for file in areafiles:
+        hybarea = oe.HybridDia.load(file)
+        for key, val in hybarea.area.items():
+            hyb.area[key] = val
+    hyb.save()
+
+
+if __name__ == '__main__':
+    NAME = sys.argv[1]
+    merge_area(NAME)
 '''[1:-1]
 
 
@@ -241,6 +260,7 @@ class Torque:
         npoints = len(cuts)*curves
         for pointnumber in range(npoints):
             self.areaids.append(self.qsub_point_in_area(curves, pointnumber))
+        self.utilityids.append(self.qsub_merge_area())
         return True
 
     def qsub_single(self):
@@ -342,11 +362,27 @@ class Torque:
         return jobid
 
     def qsub_merge_area(self):
-        jobid = None
-        return jobid
+        paras = dict()
+        paras['MODULES'] = self.modules
+        paras['NAME'] = self.name
+        paras['WORKDIR'] = self.workdir
+        paras['TMPDIR'] = self.tmpdir
 
-    def qsub_cleanup(self):
-        jobid = None
+        time, cores, ram = '00:02:00', 1, '1GB'
+        nodes, architecture = 1, 'haswell'
+
+        pbs = list()
+        pbs.append('-N {}_merge_area'.format(self.name))
+        pbs.append('-M {}'.format(self.mail))
+        pbs.append('-m ae')
+        pbs.append('-o {}/merge_area.o'.format(self.logdir))
+        pbs.append('-j oe')
+        pbs.append('-l nodes={}:{}:ppn={}'.format(nodes, architecture, cores))
+        pbs.append('-l mem={}'.format(ram))
+        pbs.append('-l walltime={}'.format(time))
+        pbs.append('-W depend=afterok:{}'.format(':'.join(self.areaids)))
+
+        jobid = qsub(os.path.join(self.tmpdir, 'merge_area.sh'), paras, pbs)
         return jobid
 
     def initialize(self, hyb):
@@ -363,10 +399,10 @@ class Torque:
         hyb.save(os.path.join(self.workdir, '{}.hyb'.format(self.name)))
         filenames = ('single.sh', 'single.py', 'curve.sh', 'curve.py',
                      'area.sh', 'area.py', 'merge_curve.sh', 'merge_curve.py',
-                     'merge_area.sh', 'merge_area.py', 'cleanup.sh')
+                     'merge_area.sh', 'merge_area.py')
         contents = (SINGLE_SH, SINGLE_PY, CURVE_SH, CURVE_PY, AREA_SH,
                     AREA_PY, MERGE_CURVE_SH, MERGE_CURVE_PY, MERGE_AREA_SH,
-                    MERGE_AREA_PY, CLEANUP_SH)
+                    MERGE_AREA_PY)
         for filename, content in zip(filenames, contents):
             with open(os.path.join(self.tmpdir, filename), 'w') as file:
                 file.write(content)
