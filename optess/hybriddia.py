@@ -247,6 +247,8 @@ class HybridDia:
             print(self.torque.interids)
             print('Curve (w/o inter-storage power flow)')
             print(self.torque.nointerids)
+            print('Area:')
+            print(self.torque.areaids)
             print('Join curve, join area, cleanup')
             print(self.torque.utilityids)
 

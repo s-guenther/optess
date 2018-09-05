@@ -1,5 +1,4 @@
 #!/bin/bash -login
-
 cd ${WORKDIR}
 echo $(date) Starting single calculation >> ${NAME}.log
 module load ${MODULES}

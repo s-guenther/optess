@@ -22,7 +22,6 @@ class TorqueSetupIncompleteError:
 
 SINGLE_SH = '''
 #!/bin/bash -login
-
 cd ${WORKDIR}
 echo $(date) Starting single calculation >> ${NAME}.log
 module load ${MODULES}
@@ -53,14 +52,39 @@ if __name__ == '__main__':
 
 
 CURVE_SH = '''
-Shell file for curve
-calculation
+#!/bin/bash -login
+cd ${WORKDIR}
+echo $(date) Starting curve calculation at cut ${CUT} ${STRATEGY} >> \
+    ${NAME}.log
+cp ${WORKDIR}/${NAME}.hyb ${TMPDIR}/${NAME}_curve_${STRATEGY}_${CUT}.hyb
+module load ${MODULES}
+python3 ${TMPDIR}/curve.py ${NAME}_curve_${STRATEGY}_${CUT}.hyb \
+    ${STRATEGY} ${CUT} >> ${WORKDIR}${NAME}.log
+echo $(date) Finished curve calculation at cut ${CUT} ${STRATEGY} >> \
+    ${NAME}.log
 '''[1:-1]
 
 
 CURVE_PY = '''
-Python file for
-curve calculation
+#!/usr/bin/env python3
+
+import optess as oe
+import sys
+
+
+def single(filename, strategy, cut):
+    """Loads the HybridDia Object specified in filename, performs single
+    calculation, saves it."""
+    hyb = oe.HybridDia.load(filename)
+    hyb.calculate_point_at_curve(cut=cut, strategy=strategy)
+    hyb.save(filename)
+
+
+if __name__ == '__main__':
+    FILENAME = sys.argv[1]
+    STRATEGY = sys.argv[2]
+    CUT = float(sys.argv[3])
+    single(FILENAME, STRATEGY, CUT)
 '''[1:-1]
 
 
@@ -157,6 +181,10 @@ class Torque:
 
     def qsub(self, cuts, curves):
         self.singleid = self.qsub_single()
+        for cut in cuts:
+            self.interids.append(self.qsub_point_at_curve(cut, 'inter'))
+        for cut in cuts:
+            self.nointerids.append(self.qsub_point_at_curve(cut, 'nointer'))
         return True
 
     def qsub_single(self):
@@ -183,7 +211,28 @@ class Torque:
         return jobid
 
     def qsub_point_at_curve(self, cut, strategy='inter'):
-        jobid = None
+        paras = dict()
+        paras['MODULES'] = self.modules
+        paras['NAME'] = self.name
+        paras['WORKDIR'] = self.workdir
+        paras['TMPDIR'] = self.tmpdir
+        paras['STRATEGY'] = strategy
+        paras['CUT'] = str(cut)
+
+        time, cores, ram = self.get_resources(self.npoints, 'single')
+        arch = self.architecture
+        nodes = 1
+
+        pbs = list()
+        pbs.append('-N {}_curve_{}_{}'.format(self.name, strategy, cut))
+        pbs.append('-o {}/curve_{}_{}.o'.format(self.logdir, strategy, cut))
+        pbs.append('-j oe')
+        pbs.append('-l nodes={}:{}:ppn={}'.format(nodes, arch, cores))
+        pbs.append('-l mem={}'.format(ram))
+        pbs.append('-l walltime={}'.format(time))
+        pbs.append('-W depend=afterok:{}'.format(self.singleid))
+
+        jobid = qsub(os.path.join(self.tmpdir, 'curve.sh'), paras, pbs)
         return jobid
 
     def qsub_point_in_area(self, curves):
