@@ -5,8 +5,6 @@ import sys
 
 
 def single(filename):
-    """Loads the HybridDia Object specified in filename, performs single
-    calculation, saves it."""
     hyb = oe.HybridDia.load(filename)
     hyb.calculate_single()
     hyb.save()

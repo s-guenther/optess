@@ -5,8 +5,6 @@ import sys
 
 
 def curve(filename, strategy, cut):
-    """Loads the HybridDia Object specified in filename, performs single
-    calculation, saves it."""
     hyb = oe.HybridDia.load(filename)
     hyb.calculate_point_at_curve(cut=cut, strategy=strategy)
     hyb.save(filename)

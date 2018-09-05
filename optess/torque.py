@@ -101,14 +101,41 @@ area calculation
 
 
 MERGE_CURVE_SH = '''
-Shell file for
-join curve
+#!/bin/bash -login
+cd ${WORKDIR}
+echo $(date) Start merging curves >> ${NAME}.log
+module load ${MODULES}
+python3 ${TMPDIR}/merge_curve.py ${NAME} >> ${WORKDIR}/${NAME}.log
+echo $(date) Finished merging curves >> ${NAME}.log
 '''[1:-1]
 
 
 MERGE_CURVE_PY = '''
-Python file for
-join curve
+#!/usr/bin/env python3
+
+import optess as oe
+import sys
+import glob
+
+
+def merge_curve(name):
+    hyb = oe.HybridDia.load(name)
+    interfiles = glob.glob('tmp_{}/{}_curve_inter_*'.format(name, name))
+    nointerfiles = glob.glob('tmp_{}/{}_curve_nointer_*'.format(name, name))
+    for file in interfiles:
+        hybcut = oe.HybridDia.load(file)
+        for key, val in hybcut.inter.items():
+            hyb.inter[key] = val
+    for file in nointerfiles:
+        hybcut = oe.HybridDia.load(file)
+        for key, val in hybcut.nointer.items():
+            hyb.nointer[key] = val
+    hyb.save()
+
+
+if __name__ == '__main__':
+    NAME = sys.argv[1]
+    merge_curve(NAME)
 '''[1:-1]
 
 
@@ -185,6 +212,7 @@ class Torque:
             self.interids.append(self.qsub_point_at_curve(cut, 'inter'))
         for cut in cuts:
             self.nointerids.append(self.qsub_point_at_curve(cut, 'nointer'))
+        self.utilityids.append(self.qsub_merge_curve())
         return True
 
     def qsub_single(self):
@@ -242,7 +270,26 @@ class Torque:
         return jobid
 
     def qsub_merge_curve(self):
-        jobid = None
+        paras = dict()
+        paras['MODULES'] = self.modules
+        paras['NAME'] = self.name
+        paras['WORKDIR'] = self.workdir
+        paras['TMPDIR'] = self.tmpdir
+
+        time, cores, ram = '00:02:00', 1, '1GB'
+        nodes, architecture = 1, 'haswell'
+
+        pbs = list()
+        pbs.append('-N {}_merge_curve'.format(self.name))
+        pbs.append('-o {}/merge_curve.o'.format(self.logdir))
+        pbs.append('-j oe')
+        pbs.append('-l nodes={}:{}:ppn={}'.format(nodes, architecture, cores))
+        pbs.append('-l mem={}'.format(ram))
+        pbs.append('-l walltime={}'.format(time))
+        pbs.append('-W depend=afterok:{}'.format(':'.join(self.interids +
+                                                          self.nointerids)))
+
+        jobid = qsub(os.path.join(self.tmpdir, 'merge_curve.sh'), paras, pbs)
         return jobid
 
     def qsub_merge_area(self):
