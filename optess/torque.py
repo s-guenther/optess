@@ -141,17 +141,51 @@ import sys
 import glob
 
 
+def abortedmsg(file):
+    errmsg = '{}: Optimisation exceeded walltime or memory, nothing ' \
+             'is added'
+    print(errmsg.format(file))
+
+
+def noresultmsg(file):
+    errmsg = '{}: No Result found, nothing is added'
+    print(errmsg.format(file))
+
+
+def nofilesmsg():
+    errmsg = 'No curve files found - single optimisation probably aborted'
+    print(errmsg)
+
+
 def merge_curve(name):
     hyb = oe.HybridDia.load(name)
     interfiles = glob.glob('tmp_{}/{}_curve_inter_*'.format(name, name))
     nointerfiles = glob.glob('tmp_{}/{}_curve_nointer_*'.format(name, name))
+    if not interfiles and not nointerfiles:
+        nofilesmsg()
     for file in interfiles:
         hybcut = oe.HybridDia.load(file)
+        if not hybcut.inter:
+            abortedmsg(file)
+            continue
         for key, val in hybcut.inter.items():
+            try:
+                getattr(val, 'load_all_results')
+            except AttributeError:
+                noresultmsg(file)
+                continue
             hyb.inter[key] = val
     for file in nointerfiles:
         hybcut = oe.HybridDia.load(file)
+        if not hybcut.nointer:
+            abortedmsg(file)
+            continue
         for key, val in hybcut.nointer.items():
+            try:
+                getattr(val, 'load_all_results')
+            except AttributeError:
+                noresultmsg(file)
+                continue
             hyb.nointer[key] = val
     # noinspection PyProtectedMember
     hyb._add_extreme_points()
@@ -185,12 +219,31 @@ import sys
 import glob
 
 
+def abortedmsg(file):
+    errmsg = '{}: Optimisation exceeded walltime or memory, or curve ' \
+             'dependency was violated, nothing is added'
+    print(errmsg.format(file))
+
+
+def noresultmsg(file):
+    errmsg = '{}: Found "NoResult" , nothing is added'
+    print(errmsg.format(file))
+
+
 def merge_area(name):
     hyb = oe.HybridDia.load(name)
     areafiles = glob.glob('tmp_{}/{}_area_*'.format(name, name))
     for file in areafiles:
         hybarea = oe.HybridDia.load(file)
+        if not hybarea.area:
+            abortedmsg(file)
+            continue
         for key, val in hybarea.area.items():
+            try:
+                getattr(val, 'load_all_results')
+            except AttributeError:
+                noresultmsg(file)
+                continue
             hyb.area[key] = val
     hyb.save()
 
@@ -345,7 +398,7 @@ class Torque:
         paras['WORKDIR'] = self.workdir
         paras['TMPDIR'] = self.tmpdir
 
-        time, cores, ram = '00:02:00', 1, '1GB'
+        time, cores, ram = '00:00:30', 1, '1GB'
         nodes, architecture = 1, 'haswell'
 
         pbs = list()
@@ -355,8 +408,8 @@ class Torque:
         pbs.append('-l nodes={}:{}:ppn={}'.format(nodes, architecture, cores))
         pbs.append('-l mem={}'.format(ram))
         pbs.append('-l walltime={}'.format(time))
-        pbs.append('-W depend=afterok:{}'.format(':'.join(self.interids +
-                                                          self.nointerids)))
+        pbs.append('-W depend=afterany:{}'.format(':'.join(self.interids +
+                                                           self.nointerids)))
 
         jobid = qsub(os.path.join(self.tmpdir, 'merge_curve.sh'), paras, pbs)
         return jobid
@@ -368,7 +421,7 @@ class Torque:
         paras['WORKDIR'] = self.workdir
         paras['TMPDIR'] = self.tmpdir
 
-        time, cores, ram = '00:02:00', 1, '1GB'
+        time, cores, ram = '00:00:30', 1, '1GB'
         nodes, architecture = 1, 'haswell'
 
         pbs = list()
@@ -380,7 +433,7 @@ class Torque:
         pbs.append('-l nodes={}:{}:ppn={}'.format(nodes, architecture, cores))
         pbs.append('-l mem={}'.format(ram))
         pbs.append('-l walltime={}'.format(time))
-        pbs.append('-W depend=afterok:{}'.format(':'.join(self.areaids)))
+        pbs.append('-W depend=afterany:{}'.format(':'.join(self.areaids)))
 
         jobid = qsub(os.path.join(self.tmpdir, 'merge_area.sh'), paras, pbs)
         return jobid
@@ -412,10 +465,11 @@ class Torque:
             logfile.write('Initialized all directories\n')
 
     def get_resources(self, n, calctype):
+        wt, mem = self.scale
         points, times, cpus, rams = self.resources[calctype]
         cpu = str(int(interp1d(points, cpus, 'linear')(n)))
-        ram = str(int(interp1d(points, rams, 'linear')(n))) + 'MB'
-        ftime = int(interp1d(points, times, 'linear')(n))
+        ram = str(int(mem*interp1d(points, rams, 'linear')(n))) + 'MB'
+        ftime = int(wt*interp1d(points, times, 'linear')(n))
         time = '{:02d}:{:02d}:{:02d}'.format(ftime//3600,
                                              (ftime - ftime//3600*3600)//60,
                                              ftime % 60)  # hours, min, sec
