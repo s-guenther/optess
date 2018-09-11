@@ -9,25 +9,24 @@ from matplotlib import pyplot as plt
 import optess as oe
 
 hybdias = list()
-seeds = [314159]
-noises = [0, 0.5, 1, 1.5, 2, 2.5, 3, 5]
+seeds = [1234]
+noises = [0, 1]
 
-npoints = 600
+npoints = 256
 mu = 40
-freqs = [3, 10, 100]
+freqs = [3, 10, 50]
 ampl = [0.3, 2]
 
-peakcut = 40.5
+peakcut = 41
 objective = oe.Objective('power', peakcut)
 
 for seed, noise in itertools.product(seeds, noises):
     print('-----  Calculating seed={}, noise={}   -----'.format(seed, noise))
     sig = oe.DataFactory.rand(npoints, mu, freqs, ampl + [noise], seed=seed)
     storagepower = max(sig.vals) - peakcut
-    storage = oe.Storage(storagepower, 0.95, 1e-3)
+    storage = oe.Storage(storagepower, 0.95, 1e16)
     hyb = oe.HybridDia(sig, storage, objective)
-    hyb.calculate_curves()
-    hyb.calculate_area((11, 11))
+    hyb.calculate_curves([0.4, 0.6, 0.8])
     hybdias.append(hyb)
 
 for hyb, (seed, noise) in zip(hybdias, itertools.product(seeds, noises)):

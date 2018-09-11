@@ -9,3 +9,5 @@ stahlwerk*
 *egg*
 build/
 venv/
+*.lp
+*.gurobi.txt

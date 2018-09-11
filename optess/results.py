@@ -7,11 +7,12 @@ import pickle
 
 from .utility import make_two_empty_axes
 from .signal import Signal
+from .signalanalysis import PEHMap, PSD
 
 
 # noinspection PyUnresolvedReferences
 class HybridResults:
-    """Represents results of optimization in an easily accassible way"""
+    """Represents results of optimization in an easily accessible way"""
     def __init__(self, model, signal):
         """Writes results in pyomo model to optimstorage classes."""
         # Direct variables stored in model
@@ -216,8 +217,8 @@ class ReducedHybridResults:
         self.basedim = _Dim(optim_case.base.power, results.baseenergycapacity)
         self.peakdim = _Dim(optim_case.peak.power, results.peakenergycapacity)
 
-        self.baselosses = max(abs(results.basesignedlosses).integrate())
-        self.peaklosses = max(abs(results.peaksignedlosses).integrate())
+        self.baselosses = max(abs(results.basesignedlosses).integrate().vals)
+        self.peaklosses = max(abs(results.peaksignedlosses).integrate().vals)
 
         self.baseparameters = _SignalParameters(results.baseinner.arv,
                                                 results.baseinner.rms,
@@ -230,6 +231,14 @@ class ReducedHybridResults:
 
         self.basecycles = results.basecycles
         self.peakcycles = results.peakcycles
+        self.basepeh = PEHMap(results.base, results.baseenergy)
+        self.peakpeh = PEHMap(results.peak, results.peakenergy)
+        self.basepsd = PSD(results.base)
+        self.peakpsd = PSD(results.peak)
+        self.chargebase = max((results.inter *
+                               (results.inter >= 0)).integrate().vals)
+        self.chargepeak = -max((results.inter *
+                                (results.inter <= 0)).integrate().vals)
 
         self._filename = None
         if save_to_disc:
@@ -259,19 +268,21 @@ class ReducedSingleResults:
 
         self.dim = _Dim(optim_case.storage.power, results.energycapacity)
 
-        self.losses = max(abs(results.signedlosses).integrate())
+        self.losses = max(abs(results.signedlosses).integrate().vals)
 
         self.signalparameters = _SignalParameters(results.inner.arv,
                                                   results.inner.rms,
                                                   results.inner.form,
                                                   results.inner.crest)
         self.cycles = results.cycles
+        self.peh = PEHMap(results.power, results.energy)
+        self.psd = PSD(results.power)
 
         self._filename = None
         if save_to_disc:
             self._save_to_disc(savepath, optim_case)
 
-        # TODO add data which are needed for plotting
+        # TODO add data which is needed for plotting
         # add all, but resample to a reasonable amount of data
 
     def _save_to_disc(self, savepath, optim_case):

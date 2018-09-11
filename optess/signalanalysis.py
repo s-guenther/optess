@@ -111,7 +111,7 @@ class PSD:
 
         fs = 1/signal.dtimes[-1]
         f, psd = welch(signal.vals, fs, window=window, scaling='spectrum',
-                       nperseg=512)
+                       nperseg=nperseg)
         return f, psd
 
     @staticmethod
