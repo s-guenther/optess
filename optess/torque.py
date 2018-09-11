@@ -350,7 +350,7 @@ class Torque:
         paras['STRATEGY'] = strategy
         paras['CUT'] = cutstr
 
-        time, cores, ram = self.get_resources(self.npoints, 'curve')
+        time, cores, ram = self.get_resources(self.npoints, strategy)
         arch = self.architecture
         nodes = 1
 
@@ -497,7 +497,7 @@ class Torque:
         modules = ' '.join(setup['module'])
         mail = setup['mail']
         resources = dict()
-        for calc in ['single', 'curve', 'area']:
+        for calc in ['single', 'inter', 'nointer', 'area']:
             resources[calc] = \
                 _Resources(_string_to_numlist(setup[calc]['points']),
                            _string_to_numlist(setup[calc]['time']),
