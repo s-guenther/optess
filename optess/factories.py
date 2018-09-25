@@ -52,6 +52,45 @@ class DataFactory:
             vals += valsinter
         return Signal(np.linspace(time/npoints, time, npoints), vals)
 
+    @staticmethod
+    def distorted_sin(npoints=256, mu=10, freq=(3, 8, 10, 50),
+                      ampl=(1, 1.5, 2, 2), variance=0.3, jitter=0.3,
+                      time=1, seed=None, interpolate='linear'):
+        """Superposes multiple sin waves, where the phase is chosen randomly
+        and amplitude and frequency show small deviations, defined by sigma1
+        and sigma2"""
+        if seed is None:
+            seed = np.random.randint(0, int(1e6))
+            print('Randomly chosen seed is {}.'.format(seed))
+        try:
+            # noinspection PyTypeChecker
+            iter(variance)
+        except TypeError:
+            variance = (variance,)*len(ampl)
+        try:
+            # noinspection PyTypeChecker
+            iter(jitter)
+        except TypeError:
+            jitter = (jitter,)*len(ampl)
+        np.random.seed(seed)
+        vals = mu*np.ones(npoints)
+        times = np.linspace(time/npoints, time, npoints)
+        for f, a0, s, j in zip(freq, ampl, variance, jitter):
+            support = int(np.ceil(4*f*time) + 1)
+            supportf = int(np.ceil(f*time/8 + 1))
+            phase = np.random.rand()*2*np.pi
+            minf = 1-j
+            maxf = 1/minf
+            ff = f*(np.random.rand(supportf)*(maxf - minf) + minf)
+            aa = a0 + s*a0*np.random.randn(support)
+            tt = np.linspace(0, time, support)
+            ttf = np.linspace(0, time, supportf)
+            ainter = interp.interp1d(tt, aa, interpolate)
+            finter = interp.interp1d(ttf, ff, interpolate)
+            vals += ainter(times)*np.sin(2*np.pi*finter(times)*times)
+
+        return Signal(times, vals)
+
 
 class StorageFactory:
     """Builds a storage with predefined loss models. Currently implemented
@@ -120,3 +159,16 @@ class SingleSetupFactory:
         name = 'Single Storage Optimization ' \
                '{}.{}.{}'.format('std', storage.power, objective.type)
         return SingleSetup(signal, storage, objective, solver, name)
+
+
+def randspace(start, stop, npoints, jitter=0.5):
+    if jitter >= 1 or jitter < 0:
+        raise ValueError('Deviation must be in [0, 1)')
+    linpoints = np.linspace(start, stop, npoints)
+    dt = linpoints[1] - linpoints[0]
+    dev = (np.random.rand(npoints)*dt-dt/2) * jitter
+    randpoints = linpoints + dev
+    randpoints[0] = start
+    randpoints[-1] = stop
+    return randpoints
+
