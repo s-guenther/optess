@@ -12,7 +12,7 @@ siggen = oe.factories.DataFactory.distorted_sin
 #              time=10,
 #              seed=1234)
 sig = siggen(npoints=10000, freq=(4,), ampl=(np.sqrt(2),), time=100,
-             seed=1234, variance=0, jitter=0.1, mu=0)
+             seed=12345, variance=0.2, jitter=0.5, mu=0)
 sig.pplot()
 
 fft = oe.PSD(sig)

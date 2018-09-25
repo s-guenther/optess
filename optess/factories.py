@@ -77,17 +77,25 @@ class DataFactory:
         times = np.linspace(time/npoints, time, npoints)
         for f, a0, s, j in zip(freq, ampl, variance, jitter):
             support = int(np.ceil(4*f*time) + 1)
-            supportf = int(np.ceil(f*time/8 + 1))
             phase = np.random.rand()*2*np.pi
-            minf = 1-j
-            maxf = 1/minf
-            ff = f*(np.random.rand(supportf)*(maxf - minf) + minf)
             aa = a0 + s*a0*np.random.randn(support)
             tt = np.linspace(0, time, support)
-            ttf = np.linspace(0, time, supportf)
             ainter = interp.interp1d(tt, aa, interpolate)
-            finter = interp.interp1d(ttf, ff, interpolate)
-            vals += ainter(times)*np.sin(2*np.pi*finter(times)*times)
+            ampvariation = ainter(times)*np.sin(2*np.pi*f*times + phase)
+
+            supportf = int(np.ceil(f*time/2 + 1))
+            minf = 1-j
+            maxf = 1/minf
+            ttf = np.linspace(0, time, supportf)
+            randf = np.random.rand(supportf)
+            ff = f*(randf*(maxf - minf) + minf)
+            dttinter = interp.interp1d(ttf, 1/ff, interpolate)
+            timesvaried = np.cumsum(dttinter(times))
+            timesvaried = timesvaried*time/timesvaried[-1]
+            timesvaried[0] = times[0]
+
+            allinter = interp.interp1d(timesvaried, ampvariation, interpolate)
+            vals += allinter(times)
 
         return Signal(times, vals)
 
