@@ -35,7 +35,7 @@ class DataFactory:
         return Signal(xx, yy)
 
     @staticmethod
-    def rand(npoints=256, mu=10, freq=(3, 8, 10, 50), ampl=(1, 1.5, 2, 2),
+    def rand(npoints=256, mu=10, freq=(3, 8, 10, 50), amp=(1, 1.5, 2, 2),
              time=None, seed=None, interpolate='linear'):
         if time is None:
             time = npoints
@@ -44,8 +44,8 @@ class DataFactory:
             print('Randomly chosen seed is {}.'.format(seed))
         vals = mu*np.ones(npoints)
         np.random.seed(seed)
-        for f, a in zip(freq, ampl):
-            y = np.random.randn(2*f+2)*a
+        for f, a in zip(freq, amp):
+            y = np.random.randn(2*f*time+2)*a
             x = np.linspace(0, npoints-1, len(y))
             inter = interp.interp1d(x, y, interpolate)
             valsinter = inter(range(npoints))
@@ -54,7 +54,7 @@ class DataFactory:
 
     @staticmethod
     def distorted_sin(npoints=256, mu=10, freq=(3, 8, 10, 50),
-                      ampl=(1, 1.5, 2, 2), variance=0.3, jitter=0.3,
+                      amp=(1, 1.5, 2, 2), ampvariance=0.3, jittervariance=0.3,
                       time=1, seed=None, interpolate='linear'):
         """Superposes multiple sin waves, where the phase is chosen randomly
         and amplitude and frequency show small deviations, defined by sigma1
@@ -64,18 +64,18 @@ class DataFactory:
             print('Randomly chosen seed is {}.'.format(seed))
         try:
             # noinspection PyTypeChecker
-            iter(variance)
+            iter(ampvariance)
         except TypeError:
-            variance = (variance,)*len(ampl)
+            ampvariance = (ampvariance,) * len(amp)
         try:
             # noinspection PyTypeChecker
-            iter(jitter)
+            iter(jittervariance)
         except TypeError:
-            jitter = (jitter,)*len(ampl)
+            jittervariance = (jittervariance,) * len(freq)
         np.random.seed(seed)
         vals = mu*np.ones(npoints)
         times = np.linspace(time/npoints, time, npoints)
-        for f, a0, s, j in zip(freq, ampl, variance, jitter):
+        for f, a0, s, j in zip(freq, amp, ampvariance, jittervariance):
             support = int(np.ceil(4*f*time) + 1)
             phase = np.random.rand()*2*np.pi
             aa = a0 + s*a0*np.random.randn(support)
@@ -83,18 +83,16 @@ class DataFactory:
             ainter = interp.interp1d(tt, aa, interpolate)
             ampvariation = ainter(times)*np.sin(2*np.pi*f*times + phase)
 
-            supportf = int(np.ceil(f*time/2 + 1))
-            minf = 1-j
-            maxf = 1/minf
+            supportf = int(np.ceil(f*time/4 + 1))
             ttf = np.linspace(0, time, supportf)
-            randf = np.random.rand(supportf)
-            ff = f*(randf*(maxf - minf) + minf)
+            randf = np.random.randn(supportf)*j + f
+            ff = abs(randf) + 1e-6
             dttinter = interp.interp1d(ttf, 1/ff, interpolate)
             timesvaried = np.cumsum(dttinter(times))
             timesvaried = timesvaried*time/timesvaried[-1]
-            timesvaried[0] = times[0]
 
-            allinter = interp.interp1d(timesvaried, ampvariation, interpolate)
+            allinter = interp.interp1d(timesvaried, ampvariation, interpolate,
+                                       fill_value='extrapolate')
             vals += allinter(times)
 
         return Signal(times, vals)
