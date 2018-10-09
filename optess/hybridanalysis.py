@@ -3,18 +3,20 @@
 in a more complex way"""
 
 from scipy.interpolate import griddata, interp1d
-from scipy.integrate import quad, dblquad
+from scipy.integrate import quad
 import numpy as np
 from .utility import make_empty_axes
 from matplotlib import pyplot as plt
 
 
 class SingularData:
-    def __init__(self, points, vals, datatype=None, interp_method='linear'):
+    def __init__(self, points, vals, datatype=None, interp_method='cubic',
+                 intgrid=101):
         self.points = list(points)
         self.vals = list(vals)
         self.type = datatype
         self._interpmethod = interp_method
+        self._intgrid = intgrid
 
     @property
     def hybridpotential(self):
@@ -30,17 +32,18 @@ class SingularData:
             pointsinter = [(chi, mu) for chi, mu in zip(cut, enorm)]
         except TypeError:
             pointsinter = (cut, enorm)
+        # noinspection PyTypeChecker
         return griddata(self.points, self.vals, pointsinter,
-                        method=self._interpmethod)
+                        method=self._interpmethod, fill_value=0)
 
     @property
     def average(self):
-        val, err = dblquad(self.interpolant,
-                           0, 1,
-                           *self.get_lower_upper_bound())
-        if err > 1e-6:
-            print('Warning: Absolute Error >= 1e-6 (err = {})'.format(err))
-        return val/(self.hybridpotential/2)
+        xgrid, ygrid = np.meshgrid(np.linspace(0, 1, self._intgrid),
+                                   np.linspace(0, 1, self._intgrid))
+        # x, y = zip(*[(x, y) for x, y in zip(xgrid.flatten(), ygrid.flatten())
+        #              if self.is_point_in_area((y, x))])
+        vals = self.interpolant(xgrid.flatten(), ygrid.flatten())
+        return np.sum(vals)/np.count_nonzero(vals)
 
     @staticmethod
     def _lower(cut):
@@ -76,7 +79,7 @@ class SingularData:
         else:
             return True
 
-    def pplot(self, ax=None, intergrid=101, nbins=15, cmap='PuBu', **kwargs):
+    def pplot(self, ax=None, intergrid=40, nbins=15, cmap='PuBu', **kwargs):
         y, x = [[*tup] for tup in zip(*self.points)]
         vals = list(self.vals)
         xunfiltered, yunfiltered = np.meshgrid(np.linspace(0, 1, intergrid),
