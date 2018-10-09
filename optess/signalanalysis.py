@@ -132,14 +132,14 @@ class PSD:
 
         return Signal(tt, yy)
 
-    def pplot(self, ax=None, plot=plt.plot):
+    def pplot(self, ax=None, plot=plt.plot, **kwargs):
         """Reasonable arguments for plot are: plt.plot, plt.semilogy,
         plt.semilogx, plt.loglog, where plt is matplotlib.pyplot"""
         ax = ax if ax else make_empty_axes()
         ax.set_xlabel('Frequency')
         ax.set_ylabel('Amplitude')
         ax.thisplot = plot
-        ax.thisplot(self.frequency, self.amplitude)
+        ax.thisplot(self.frequency, self.amplitude, **kwargs)
 
 
 def nearest_power(n):

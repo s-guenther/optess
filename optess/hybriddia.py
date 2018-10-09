@@ -401,19 +401,19 @@ class HybridDia:
 
         xvec, yvec, cycvec = list(), list(), list()
         for x, y, cycles in zip(nointer, powernointer, cyclesnointer):
-            ax.text(x, y, '{:.2f}'.format(cycles[1]))
+            # ax.text(x, y, '{:.2f}'.format(cycles[1]))
             xvec.append(x)
             yvec.append(y)
             cycvec.append(cycles[0])
         for x, y, cycles in zip(inter, powerinter, cyclesinter):
-            ax.text(x, y, '{:.2f}'.format(cycles[1]))
+            # ax.text(x, y, '{:.2f}'.format(cycles[1]))
             xvec.append(x)
             yvec.append(y)
             cycvec.append(cycles[0])
         for (y, x), results in self.area.items():
             cbase, cpeak = (results.basecycles, results.peakcycles)
-            ax.text(x*self.energycapacity, y*self.powercapacity,
-                    '{:.2f}'.format(cpeak))
+            # ax.text(x*self.energycapacity, y*self.powercapacity,
+            #         '{:.2f}'.format(cpeak))
             xvec.append(x*self.energycapacity)
             yvec.append(y*self.powercapacity)
             cycvec.append(cbase)

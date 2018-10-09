@@ -219,9 +219,6 @@ class ReducedHybridResults:
         self.basedim = _Dim(optim_case.base.power, results.baseenergycapacity)
         self.peakdim = _Dim(optim_case.peak.power, results.peakenergycapacity)
 
-        self.baselosses = max(abs(results.basesignedlosses).integrate().vals)
-        self.peaklosses = max(abs(results.peaksignedlosses).integrate().vals)
-
         single_power_min = self.basedim.power.min + self.peakdim.power.min
         single_power_max = self.basedim.power.max + self.peakdim.power.max
         single_energy = self.basedim.energy + self.peakdim.energy
