@@ -320,8 +320,6 @@ def single_to_base_results(singlered):
     hybridred = copy.copy(singlered)
     hybridred.__class__ = ReducedHybridResults
 
-    dummysignal = PEHMap(Signal([0, 1], [0, 0]), Signal([0, 1], [0, 0]))
-
     hybridred.basedim = hybridred.dim
     hybridred.peakdim = _Dim(0, 0)
     hybridred.basenorm = _Norm(1, 1)
