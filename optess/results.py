@@ -320,16 +320,36 @@ def single_to_base_results(singlered):
     hybridred = copy.copy(singlered)
     hybridred.__class__ = ReducedHybridResults
 
+    dummysignal = PEHMap(Signal([0, 1], [0, 0]), Signal([0, 1], [0, 0]))
+
     hybridred.basedim = hybridred.dim
     hybridred.peakdim = _Dim(0, 0)
     hybridred.basenorm = _Norm(1, 1)
     hybridred.peaknorm = _Norm(0, 0)
+
     hybridred.baselosses = hybridred.losses
     hybridred.peaklosses = 0
+
     hybridred.baseparameters = hybridred.signalparameters
     hybridred.peakparameters = _SignalParameters(0, 0, 0, 0)
+
     hybridred.basecycles = hybridred.cycles
     hybridred.peakcycles = 0
+
+    hybridred.basepeh = hybridred.peh
+    hybridred.peakpeh = copy.deepcopy(hybridred.peh)
+    hybridred.peakpeh.eweights *= 0
+    hybridred.peakpeh.pweights *= 0
+    hybridred.peakpeh.map *= 0
+
+    hybridred.basepsd = hybridred.psd
+    hybridred.peakpsd = copy.deepcopy(hybridred.psd)
+    hybridred.peakpsd.amv = 0
+    hybridred.peakpsd.psd *= 0
+
+    hybridred.chargepeak = 0
+    hybridred.chargebase = 0
+
     return hybridred
 
 
@@ -341,12 +361,29 @@ def single_to_peak_results(singlered):
     hybridred.basedim = _Dim(0, 0)
     hybridred.peaknorm = _Norm(1, 1)
     hybridred.basenorm = _Norm(0, 0)
+
     hybridred.peaklosses = hybridred.losses
     hybridred.baselosses = 0
+
     hybridred.peakparameters = hybridred.signalparameters
     hybridred.baseparameters = _SignalParameters(0, 0, 0, 0)
+
     hybridred.peakcycles = hybridred.cycles
     hybridred.basecycles = 1
+
+    hybridred.peakpeh = hybridred.peh
+    hybridred.basepeh = copy.deepcopy(hybridred.peh)
+    hybridred.basepeh.eweights *= 0
+    hybridred.basepeh.pweights *= 0
+    hybridred.basepeh.map *= 0
+
+    hybridred.peakpsd = hybridred.psd
+    hybridred.basepsd = copy.deepcopy(hybridred.psd)
+    hybridred.basepsd.amv = 0
+    hybridred.basepsd.psd *= 0
+
+    hybridred.chargepeak = 0
+    hybridred.chargebase = 0
     return hybridred
 
 # TODO refactor Results and Reduced Results in a way that they are identical
