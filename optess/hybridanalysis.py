@@ -15,7 +15,7 @@ from .utility import make_empty_axes
 SingularDataInput = namedtuple('SingularDataInput', 'points vals datatype')
 
 
-def extract_data(hyb, field, copy_peak=False, hook=None, extrahookargs=None):
+def extract_data(hyb, field, copy_peak=False, hook=None, extrahookarg=None):
     points = list()
     vals = list()
 
@@ -35,8 +35,8 @@ def extract_data(hyb, field, copy_peak=False, hook=None, extrahookargs=None):
     if copy_peak:
         points, vals = copy_highest(points, vals)
     if hook:
-        if extrahookargs:
-            points, vals = hook(points, vals, *extrahookargs)
+        if extrahookarg:
+            points, vals = hook(points, vals, extrahookarg)
         else:
             points, vals = hook(points, vals)
 
@@ -84,7 +84,9 @@ class SingularData:
         xgrid, ygrid = np.meshgrid(np.linspace(1/ig/2, 1-1/ig/2, ig),
                                    np.linspace(1/ig/2, 1-1/ig/2, ig))
         vals = self.interpolant(xgrid.flatten(), ygrid.flatten())
-        return np.sum(vals)/np.count_nonzero(vals)
+        nonzerovals = np.count_nonzero(vals)
+        nonzerovals = nonzerovals if nonzerovals else 1
+        return np.sum(vals)/nonzerovals
 
     def interpolant(self, enorm, cut):
         """Returns callable object taking two argumens enorm, cut"""
@@ -125,53 +127,86 @@ class HybridAnalysis:
         self.name = hyb.name
 
         scaling_factors = self.get_scaling_factors(hyb)
-        loss_scale, cycle_scale, charge_scale, psdmax = scaling_factors
+        loss_scale, cycle_scale, charge_scale, form_scale, crest_scale, \
+            ppeh_scale, epeh_scale, psd_scale = scaling_factors
 
-        basefields = ['baselosses', 'baseparameters.form',
-                      'baseparameters.crest', 'basecycles', 'basepeh',
-                      'basepeh', 'basepeh', 'basepeh', 'basepeh', 'basepeh',
-                      'basepsd.amplitude', 'basepsd.amplitude',
-                      'basepsd.amplidude', 'chargebase']
-        peakfields = ['peaklosses', 'peakparameters.form',
-                      'peakparameters.crest', 'peakcycles', 'peakpeh',
-                      'peakpeh', 'peakpeh', 'peakpeh', 'peakpeh', 'peakpeh',
-                      'peakpsd.amplitude', 'peakpsd.amplitude',
-                      'peakpsd.amplitude', 'chargepeak']
-        attrs = ['losses', 'form', 'crest', 'cycles', 'powerpehlow',
-                 'powerpehmed', 'powerpehhigh', 'energypehlow',
-                 'energypehmed', 'energypehhigh', 'psdlow', 'psdmed',
-                 'psdhigh', 'charge']
-        hooks = [None, None, None, None, powerpehlow, powerpehmed,
-                 powerpehhigh, energypehlow, energypehmed,
-                 energypehhigh, psdlow, psdmed, psdhigh, None]
-
-        hookargs = [loss_scale, None, None, cycle_scale, None, None,
-                    psdmax, psdmax, psdmax, charge_scale]
+        basefields = ['baselosses', 'basecycles', 'chargebase',
+                      'baseparameters.form', 'baseparameters.crest',
+                      'basepeh', 'basepeh', 'basepeh',
+                      'basepeh', 'basepeh', 'basepeh',
+                      'basepsd.amplitude', 'basepsd.amplitude', 'basepsd.amplitude']
+        peakfields = ['peaklosses', 'peakcycles', 'chargepeak',
+                      'peakparameters.form', 'peakparameters.crest',
+                      'peakpeh', 'peakpeh', 'peakpeh',
+                      'peakpeh', 'peakpeh', 'peakpeh',
+                      'peakpsd.amplitude', 'peakpsd.amplitude', 'peakpsd.amplitude']
+        attrs = ['losses', 'cycles', 'charge',
+                 'form', 'crest',
+                 'powerpehlow', 'powerpehmed', 'powerpehhigh',
+                 'energypehlow', 'energypehmed', 'energypehhigh',
+                 'psdlow', 'psdmed', 'psdhigh']
+        hooks = [scale_base_losses, scale, scale,
+                 scale, scale,
+                 powerpehlow, powerpehmed, powerpehhigh,
+                 energypehlow, energypehmed, energypehhigh,
+                 psdlow, psdmed, psdhigh]
+        hookargs = [loss_scale, cycle_scale, charge_scale,
+                    form_scale, crest_scale,
+                    ppeh_scale[0], ppeh_scale[1], ppeh_scale[2],
+                    epeh_scale[0], epeh_scale[1], epeh_scale[2],
+                    psd_scale[0], psd_scale[1], psd_scale[2]]
 
         for attr, field, hook, arg in zip(attrs, basefields, hooks, hookargs):
             data = extract_data(hyb, field, copy_peak=False,
-                                hook=hook, extrahookargs=[arg])
-            setattr(self.base, attr, SingularDataInput(*data))
+                                hook=hook, extrahookarg=arg)
+            setattr(self.base, attr, SingularData(*data))
 
-        for attr, field, hook, arg in zip(attrs, peakfields, hooks):
+        # change first hook for peak losses, remaining hooks are equal
+        hooks[0] = scale_peak_losses
+        for attr, field, hook, arg in zip(attrs, peakfields, hooks, hookargs):
             data = extract_data(hyb, field, copy_peak=True,
-                                hook=hook, extrahookargs=[arg])
-            setattr(self.base, attr, SingularDataInput(*data))
+                                hook=hook, extrahookarg=arg)
+            setattr(self.peak, attr, SingularData(*data))
 
     @staticmethod
     def get_scaling_factors(hyb):
-        loss_scale = 1/(hyb.single.losses/hyb.single.dim.energy)
+        loss_scale = 1/hyb.single.losses
         cycle_scale = 1/hyb.single.cycles
         charge_scale = 1/hyb.single.dim.energy
+        form_scale = 1/hyb.single.signalparameters.form
+        crest_scale = 1/hyb.single.signalparameters.crest
+
+        # power peh
+        pweights = hyb.single.peh.pweights
+        ppeh_scale = (float(np.sum(pweights[8:12])),
+                      float(np.sum(pweights[2:8]) + np.sum(pweights[12:18])),
+                      float(np.sum(pweights[0:2]) + np.sum(pweights[18:])))
+
+        # energy peh
+        eweights = hyb.single.peh.eweights
+        epeh_scale = (float(np.sum(eweights[0:4])),
+                      float(np.sum(eweights[4:16])),
+                      float(np.sum(eweights[16:])))
+        # TODO duplicate code with hooks at end of file
 
         # get integral of single psd
-        psdint = np.cumsum(hyb.single.psd.amplitude)
-        # determine 95% limit
-        psd095 = 0.95*psdint[-1]
-        psdmaxindex = int(np.flatnonzero(np.array(psdint > psd095))[0] + 1)
-        psdval = psdint[-1]
+        psdvals = hyb.single.psd.amplitude
+        psdint = np.cumsum(psdvals)
+        # determine 90% limit
+        psd09 = 0.90*psdint[-1]
+        psdmaxindex = int(np.flatnonzero(np.array(psdint > psd09))[0] + 1)
+        psdval = psdint[psdmaxindex]
+        psd_1_3 = int(psdmaxindex*1/3 + 1)
+        psd_2_3 = int(psdmaxindex*2/3 + 1)
+        psd_scale = ((psdmaxindex,
+                      np.sum(psdvals[0:psd_1_3-1]/psdval)),
+                     (psdmaxindex,
+                      np.sum(psdvals[psd_1_3:psd_2_3-1]/psdval)),
+                     (psdmaxindex,
+                      np.sum(psdvals[psd_2_3:psdmaxindex]/psdval)))
 
-        return loss_scale, cycle_scale, charge_scale, (psdmaxindex, psdval)
+        return (loss_scale, cycle_scale, charge_scale, form_scale,
+                crest_scale, ppeh_scale, epeh_scale, psd_scale)
 
 
 class StorageResults:
@@ -183,9 +218,9 @@ class StorageResults:
         self.powerpehlow = None
         self.powerpehmed = None
         self.powerpehhigh = None
-        self.basepehlow = None
-        self.basepehmed = None
-        self.basepehhigh = None
+        self.energypehlow = None
+        self.energypehmed = None
+        self.energypehhigh = None
         self.psdlow = None
         self.psdmed = None
         self.psdhigh = None
@@ -193,8 +228,12 @@ class StorageResults:
 
 
 # ### Hooks
-def psd(points, vals, start, end, whole):
-    newvals = [np.cumsum(val[start:end])/whole for val in vals]
+def psd(points, vals, start, end, singleval):
+    newvals = list()
+    for val in vals:
+        allint = np.sum(val) if np.sum(val) else 1
+        partint = np.sum(val[start:end])
+        newvals.append(partint/allint/singleval)
     return points, newvals
 
 
@@ -205,45 +244,68 @@ def psdlow(points, vals, endindexval):
 
 
 def psdmed(points, vals, endindexval):
-    start, end = int(endindexval[0]*1/3 + 1), int(endindexval[1]*2/3)
-    whole = endindexval[1]
-    return psd(points, vals, start, end, whole)
+    start, end = int(endindexval[0]*1/3 + 1), int(endindexval[0]*2/3)
+    singleval = endindexval[1]
+    return psd(points, vals, start, end, singleval)
 
 
 def psdhigh(points, vals, endindexval):
-    start, end = int(endindexval[0]*2/3 + 1), int(len(vals[0]) - 1)
+    start, end = int(endindexval[0]*2/3 + 1), endindexval[0]
     whole = endindexval[1]
     return psd(points, vals, start, end, whole)
 
 
-# TODO PEH power assumes symmetric storages (P charge == P discharge)
-def powerpehhigh(points, vals):
-    newvals = [float(np.sum(val.eweights[0:2]) + np.sum(val.eweights[18:]))
+# PEH power assumes symmetric storages (P charge == P discharge)
+# This will will not give wrong results if this is not the case,
+# but eventually unpredicted ones. The PEHMap Class norms positive and
+# negative power to the maximum occuring one (max(abs(p))), so exceeding
+# power at one side will simply put into zero-bins
+def powerpehhigh(points, vals, singleval):
+    newvals = [float((np.sum(val.pweights[0:2]) +
+                      np.sum(val.pweights[18:]))/singleval)
                for val in vals]
     return points, newvals
 
 
-def powerpehmed(points, vals):
-    newvals = [float(np.sum(val.eweights[2:8]) + np.sum(val.eweights[12:18]))
+def powerpehmed(points, vals, singleval):
+    newvals = [float((np.sum(val.pweights[2:8]) +
+                      np.sum(val.pweights[12:18]))/singleval)
                for val in vals]
     return points, newvals
 
 
-def powerpehlow(points, vals):
-    newvals = [float(np.sum(val.eweights[8:12])) for val in vals]
+def powerpehlow(points, vals, singleval):
+    newvals = [float(np.sum(val.pweights[8:12])/singleval) for val in vals]
     return points, newvals
 
 
-def energypehlow(points, vals):
-    newvals = [float(np.sum(val.eweights[0:5])) for val in vals]
+def energypehlow(points, vals, singleval):
+    newvals = [float(np.sum(val.eweights[0:4])/singleval) for val in vals]
     return points, newvals
 
 
-def energypehmed(points, vals):
-    newvals = [float(np.sum(val.eweights[5:15])) for val in vals]
+def energypehmed(points, vals, singleval):
+    newvals = [float(np.sum(val.eweights[4:16])/singleval) for val in vals]
     return points, newvals
 
 
-def energypehhigh(points, vals):
-    newvals = [float(np.sum(val.eweights[15:])) for val in vals]
+def energypehhigh(points, vals, singleval):
+    newvals = [float(np.sum(val.eweights[16:])/singleval) for val in vals]
+    return points, newvals
+
+
+def scale_base_losses(points, vals, scale):
+    newvals = [float(val*scale/point[1]) if point[1] != 0 else 0
+               for val, point in zip( vals, points)]
+    return points, newvals
+
+
+def scale_peak_losses(points, vals, scale):
+    newvals = [float(val*scale/(1 - point[1])) if point[1] != 1 else 0
+               for val, point in zip(vals, points)]
+    return points, newvals
+
+
+def scale(points, vals, scaleval):
+    newvals = [float(val*scaleval) for val in vals]
     return points, newvals
