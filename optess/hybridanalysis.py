@@ -62,7 +62,7 @@ def copy_highest(points, vals):
 
 
 class SingularData:
-    def __init__(self, points, vals, datatype=None, interp_method='cubic',
+    def __init__(self, points, vals, datatype=None, interp_method='linear',
                  intgrid=500):
         self.points = list(points)
         self.vals = list(vals)
@@ -124,9 +124,35 @@ class HybridAnalysis:
     def __init__(self, hyb):
         self.base = StorageResults()
         self.peak = StorageResults()
+        # only double values saved in self.single, no SingularData object
+        self.single = StorageResults()
         self.name = hyb.name
 
-        scaling_factors = self.get_scaling_factors(hyb)
+        self._populate_single(hyb)
+        self._populate_base_and_peak(hyb)
+
+    def _populate_single(self, hyb):
+        scaling_factors = self._get_scaling_factors(hyb)
+        loss_scale, cycle_scale, charge_scale, form_scale, crest_scale, \
+            ppeh_scale, epeh_scale, psd_scale = scaling_factors
+
+        self.single.losses = hyb.single.losses/hyb.single.dim.energy
+        self.single.form = hyb.single.signalparameters.form
+        self.single.crest = hyb.single.signalparameters.crest
+        self.single.cycles = hyb.single.cycles
+        self.single.powerpehlow = ppeh_scale[0]
+        self.single.powerpehmed = ppeh_scale[1]
+        self.single.powerpehhigh = ppeh_scale[2]
+        self.single.energypehlow = epeh_scale[0]
+        self.single.energypehmed = epeh_scale[1]
+        self.single.energypehhigh = epeh_scale[2]
+        self.single.psdlow = psd_scale[0][1]
+        self.single.psdmed = psd_scale[1][1]
+        self.single.psdhigh = psd_scale[2][1]
+        self.single.charge = 0
+
+    def _populate_base_and_peak(self, hyb):
+        scaling_factors = self._get_scaling_factors(hyb)
         loss_scale, cycle_scale, charge_scale, form_scale, crest_scale, \
             ppeh_scale, epeh_scale, psd_scale = scaling_factors
 
@@ -169,8 +195,8 @@ class HybridAnalysis:
             setattr(self.peak, attr, SingularData(*data))
 
     @staticmethod
-    def get_scaling_factors(hyb):
-        loss_scale = 1/hyb.single.losses
+    def _get_scaling_factors(hyb):
+        loss_scale = 1/hyb.single.losses*hyb.single.dim.energy
         cycle_scale = 1/hyb.single.cycles
         charge_scale = 1/hyb.single.dim.energy
         form_scale = 1/hyb.single.signalparameters.form
@@ -203,7 +229,7 @@ class HybridAnalysis:
                      (psdmaxindex,
                       np.sum(psdvals[psd_1_3:psd_2_3-1]/psdval)),
                      (psdmaxindex,
-                      np.sum(psdvals[psd_2_3:psdmaxindex]/psdval)))
+                      np.sum(psdvals[psd_2_3:psdmaxindex+1]/psdval)))
 
         return (loss_scale, cycle_scale, charge_scale, form_scale,
                 crest_scale, ppeh_scale, epeh_scale, psd_scale)
@@ -228,10 +254,12 @@ class StorageResults:
 
 
 # ### Hooks
-def psd(points, vals, start, end, singleval):
+def psd(points, vals, start, end, singleendindexval):
     newvals = list()
+    absend = singleendindexval[0]
+    singleval = singleendindexval[1]
     for val in vals:
-        allint = np.sum(val) if np.sum(val) else 1
+        allint = np.sum(val[0:absend]) if np.sum(val) else 1
         partint = np.sum(val[start:end])
         newvals.append(partint/allint/singleval)
     return points, newvals
@@ -239,20 +267,17 @@ def psd(points, vals, start, end, singleval):
 
 def psdlow(points, vals, endindexval):
     start, end = 0, int(endindexval[0]/3)
-    whole = endindexval[1]
-    return psd(points, vals, start, end, whole)
+    return psd(points, vals, start, end, endindexval)
 
 
 def psdmed(points, vals, endindexval):
-    start, end = int(endindexval[0]*1/3 + 1), int(endindexval[0]*2/3)
-    singleval = endindexval[1]
-    return psd(points, vals, start, end, singleval)
+    start, end = int(endindexval[0]*1/3), int(endindexval[0]*2/3)
+    return psd(points, vals, start, end, endindexval)
 
 
 def psdhigh(points, vals, endindexval):
-    start, end = int(endindexval[0]*2/3 + 1), endindexval[0]
-    whole = endindexval[1]
-    return psd(points, vals, start, end, whole)
+    start, end = int(endindexval[0]*2/3), endindexval[0] + 1
+    return psd(points, vals, start, end, endindexval)
 
 
 # PEH power assumes symmetric storages (P charge == P discharge)
@@ -294,14 +319,14 @@ def energypehhigh(points, vals, singleval):
     return points, newvals
 
 
-def scale_base_losses(points, vals, scale):
-    newvals = [float(val*scale/point[1]) if point[1] != 0 else 0
-               for val, point in zip( vals, points)]
+def scale_base_losses(points, vals, scaleval):
+    newvals = [float(val*scaleval/point[1]) if point[1] != 0 else 0
+               for val, point in zip(vals, points)]
     return points, newvals
 
 
-def scale_peak_losses(points, vals, scale):
-    newvals = [float(val*scale/(1 - point[1])) if point[1] != 1 else 0
+def scale_peak_losses(points, vals, scaleval):
+    newvals = [float(val*scaleval/(1 - point[1])) if point[1] != 1 else 0
                for val, point in zip(vals, points)]
     return points, newvals
 

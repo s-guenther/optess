@@ -97,6 +97,37 @@ class DataFactory:
 
         return Signal(times, vals)
 
+    @classmethod
+    def freq(cls, npoints=1000, mu=10, nfreqs=32,
+             freqsupport=(0.05, 1.5, 1.6, 3, 3.1, 4.5),
+             ampsupport=(0.9, 1, 0.2, 0.2, 1, 0.9),
+             ampvar=0.0, ampjitter=0.3, freqjitter=0.05,
+             time=100, seed=None, interpolate='linear', spacing=np.linspace):
+        """Similar to distorted sin, but takes a frequency response (as
+        freq-amp pairs as input and builds randomized signal which roughly
+        matches this frequency response"""
+        if seed is None:
+            seed = np.random.randint(0, int(1e6))
+            print('Randomly chosen seed is {}.'.format(seed))
+        try:
+            # noinspection PyTypeChecker
+            iter(ampvar)
+        except TypeError:
+            ampvar = (ampvar,) * len(ampsupport)
+        np.random.seed(seed)
+
+        ampinterp = interp.interp1d(freqsupport, ampsupport,
+                                    kind=interpolate, fill_value='extrapolate')
+        ampvarinterp = interp.interp1d(freqsupport, ampvar, interpolate,
+                                       fill_value='extrapolate')
+
+        freqs = spacing(freqsupport[0], freqsupport[-1], num=nfreqs)
+        amps = (ampinterp(freqs) +
+                ampvarinterp(freqs)*np.random.rand(*freqs.shape))
+
+        return cls.distorted_sin(npoints, mu, freqs, amps, ampjitter,
+                                 freqjitter, time, seed, interpolate)
+
 
 class StorageFactory:
     """Builds a storage with predefined loss models. Currently implemented

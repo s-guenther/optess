@@ -9,4 +9,5 @@ from .objective import Objective
 from .storage import Storage
 from .signal import Signal
 from .signalanalysis import PSD, PEHMap
+from .hybridanalysis import HybridAnalysis
 from optess import torque
