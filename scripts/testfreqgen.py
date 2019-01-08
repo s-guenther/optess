@@ -7,7 +7,7 @@ freqfact = oe.factories.DataFactory.freq
 
 for ii in range(10):
     sig = freqfact()
-    sigpsd = signalanalysis.PSD(sig)
+    sigpsd = signalanalysis.FFT(sig)
     sig.pplot()
     sigpsd.pplot()
 

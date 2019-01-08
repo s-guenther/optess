@@ -8,7 +8,7 @@ import copy
 
 from .utility import make_two_empty_axes
 from .signal import Signal
-from .signalanalysis import PEHMap, PSD
+from .signalanalysis import PEHMap, FFT
 
 
 # noinspection PyUnresolvedReferences
@@ -246,8 +246,8 @@ class ReducedHybridResults:
         self.peakcycles = results.peakcycles
         self.basepeh = PEHMap(results.base, results.baseenergy)
         self.peakpeh = PEHMap(results.peak, results.peakenergy)
-        self.basepsd = PSD(results.base)
-        self.peakpsd = PSD(results.peak)
+        self.basefft = FFT(results.base)
+        self.peakfft = FFT(results.peak)
         self.chargebase = max((results.inter *
                                (results.inter >= 0)).integrate().vals)
         self.chargepeak = -max((results.inter *
@@ -289,7 +289,7 @@ class ReducedSingleResults:
                                                   results.inner.crest)
         self.cycles = results.cycles
         self.peh = PEHMap(results.power, results.energy)
-        self.psd = PSD(results.power)
+        self.fft = FFT(results.power)
 
         self._filename = None
         if save_to_disc:

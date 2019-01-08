@@ -160,12 +160,12 @@ class HybridAnalysis:
                       'baseparameters.form', 'baseparameters.crest',
                       'basepeh', 'basepeh', 'basepeh',
                       'basepeh', 'basepeh', 'basepeh',
-                      'basepsd.amplitude', 'basepsd.amplitude', 'basepsd.amplitude']
+                      'basefft.amplitude', 'basefft.amplitude', 'basefft.amplitude']
         peakfields = ['peaklosses', 'peakcycles', 'chargepeak',
                       'peakparameters.form', 'peakparameters.crest',
                       'peakpeh', 'peakpeh', 'peakpeh',
                       'peakpeh', 'peakpeh', 'peakpeh',
-                      'peakpsd.amplitude', 'peakpsd.amplitude', 'peakpsd.amplitude']
+                      'peakfft.amplitude', 'peakfft.amplitude', 'peakfft.amplitude']
         attrs = ['losses', 'cycles', 'charge',
                  'form', 'crest',
                  'powerpehlow', 'powerpehmed', 'powerpehhigh',
@@ -215,7 +215,7 @@ class HybridAnalysis:
                       float(np.sum(eweights[16:])))
         # TODO duplicate code with hooks at end of file
 
-        # get integral of single psd
+        # get integral of single fft
         psdvals = hyb.single.psd.amplitude
         psdint = np.cumsum(psdvals)
         # determine 90% limit

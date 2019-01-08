@@ -8,6 +8,6 @@ from .factories import DataFactory, StorageFactory, ObjectiveFactory, \
 from .objective import Objective
 from .storage import Storage
 from .signal import Signal
-from .signalanalysis import PSD, PEHMap
+from .signalanalysis import FFT, PEHMap
 from .hybridanalysis import HybridAnalysis
 from optess import torque

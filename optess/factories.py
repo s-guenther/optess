@@ -3,11 +3,16 @@
 
 import numpy as np
 import scipy.interpolate as interp
+import scipy.signal as scisig
 from collections import namedtuple
 
 from .signal import Signal
 from .storage import Storage
 from .objective import Objective
+
+
+class FilterBandwidthExceedsSamplingBandwidthError(ValueError):
+    pass
 
 
 class DataFactory:
@@ -90,6 +95,8 @@ class DataFactory:
             dttinter = interp.interp1d(ttf, 1/ff, interpolate)
             timesvaried = np.cumsum(dttinter(times))
             timesvaried = timesvaried*time/timesvaried[-1]
+            # TODO modify phase instead of stretching time vector to get
+            # TODO fluctuating frequency
 
             allinter = interp.interp1d(timesvaried, ampvariation, interpolate,
                                        fill_value='extrapolate')
@@ -98,8 +105,8 @@ class DataFactory:
         return Signal(times, vals)
 
     @classmethod
-    def freq(cls, npoints=1000, mu=10, nfreqs=32,
-             freqsupport=(0.05, 1.5, 1.6, 3, 3.1, 4.5),
+    def freq(cls, npoints=1000, mu=10, nfreqs=32, arvmean=1,
+             freqsupport=(0.05, 1.5, 1.7, 3, 3.2, 4.5),
              ampsupport=(0.9, 1, 0.2, 0.2, 1, 0.9),
              ampvar=0.0, ampjitter=0.3, freqjitter=0.05,
              time=100, seed=None, interpolate='linear', spacing=np.linspace):
@@ -125,8 +132,43 @@ class DataFactory:
         amps = (ampinterp(freqs) +
                 ampvarinterp(freqs)*np.random.rand(*freqs.shape))
 
-        return cls.distorted_sin(npoints, mu, freqs, amps, ampjitter,
-                                 freqjitter, time, seed, interpolate)
+        sig = cls.distorted_sin(npoints, 0, freqs, amps, ampjitter,
+                                freqjitter, time, seed, interpolate)
+        sig *= 1/np.mean(abs(sig.vals))*arvmean
+        sig += mu
+
+        return sig
+
+    @staticmethod
+    def bandlmt_wnoise(npoints=1000, mu=10, arvmean=1, time=100,
+                       freqsupport=(0, 1.5, 1.7, 3, 3.2, 4.5, 4.7, 5),
+                       ampsupport=(0.9, 1, 0.2, 0.2, 1, 0.9, 0, 0),
+                       numtabs=201, seed=None):
+        if seed is None:
+            seed = np.random.randint(0, int(1e6))
+            print('Randomly chosen seed is {}.'.format(seed))
+        if freqsupport[-1] > npoints/time/2:
+            raise FilterBandwidthExceedsSamplingBandwidthError
+
+        np.random.seed(seed)
+
+        freqsupport = list(freqsupport)
+        fs = npoints/time
+        freqsupport[-1] = fs/2
+
+        t = np.linspace(time/npoints, time, npoints)
+        n = np.random.randn(npoints + numtabs)
+
+        coeffs = scisig.firls(numtabs, freqsupport, ampsupport, fs=fs)
+        zi = scisig.lfilter_zi(b=coeffs, a=1)
+        z, _ = scisig.lfilter(b=coeffs, a=1, x=n, zi=zi*n[0])
+        z = z[numtabs:]
+
+        sig = Signal(t, z)
+        sig *= 1/np.mean(abs(sig.vals))*arvmean
+        sig += mu
+
+        return sig
 
 
 class StorageFactory:

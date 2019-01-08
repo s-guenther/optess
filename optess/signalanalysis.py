@@ -6,7 +6,8 @@ import numpy as np
 from matplotlib import pyplot as plt
 import matplotlib.gridspec as grdspc
 from operator import itemgetter
-from scipy.signal import resample, welch
+from scipy.signal import resample, windows
+import warnings
 
 from .signal import Signal
 from .utility import make_empty_axes
@@ -90,29 +91,56 @@ class PEHMap:
         return self
 
 
-class PSD:
-    def __init__(self, signal):
+class FFT:
+    def __init__(self, signal, window=windows.hann):
+        """Please use scipy.signal.window windows instead of numpy windows.
+        Refer to http://www.ni.com/white-paper/4278/en/ to choose a correct
+        window"""
         signal = self.equidistant(signal)
-        self.amv = signal.amv
-        self.frequency, self.psd = self.compute_psd(signal - self.amv)
+        (self.freq_scale, self.ampl_scale, self.amv) = self.fft_info(signal)
+        self.fft = self.fft(signal - self.amv, window=window)
 
     @property
     def amplitude(self):
-        return self.psd
+        return abs(self.fft)*self.ampl_scale
+
+    @property
+    def phase(self):
+        return np.angle(self.fft)
+
+    @property
+    def frequency(self):
+        return np.linspace(0, self.freq_scale, len(self.fft))
 
     @staticmethod
-    def compute_psd(signal, window='hann', nperseg=None):
+    def fft(signal, window=windows.hann):
         """Apply fft with window function to signal, expect an equidistant
         timesteps and a signal with an average mean value of zero. Only
         return half spectrum.
-        Use window = np.ones if no window function shall be applied."""
-        if nperseg is None:
-            nperseg = nearest_power(len(signal)/10)
-
-        fs = 1/signal.dtimes[-1]
-        f, psd = welch(signal.vals, fs, window=window, scaling='spectrum',
-                       nperseg=nperseg)
-        return f, psd
+        Use window = np.ones if no window function shall be applied.
+        Refer to http://www.ni.com/white-paper/4278/en/ to choose a correct
+        window"""
+        # scales taken from http://www.ni.com/white-paper/4278/en/
+        if window is windows.hann:
+            window_scale = 1/0.5
+        elif window is windows.hamming:
+            window_scale = 1/0.54
+        elif window is windows.blackman:
+            window_scale = 1/0.42
+        elif window is windows.blackmanharris:
+            window_scale = 1/0.42
+        elif window is windows.flattop:
+            window_scale = 1/0.22
+        elif window is np.ones:
+            window_scale = 1
+        else:
+            window_scale = 1
+            msg = 'Window {} not recognised, using scaling factor of 1'
+            warnings.warn(msg.format(window))
+        npoints = len(signal)
+        fft = np.fft.fft(signal.vals*window(npoints))*1/2*window_scale
+        half = int(np.ceil(npoints/2))
+        return fft[:half]
 
     @staticmethod
     def equidistant(signal):
@@ -131,6 +159,17 @@ class PSD:
         # TODO, shift signal to correct first time step
 
         return Signal(tt, yy)
+
+    @staticmethod
+    def fft_info(signal):
+        """Expects equidistant time steps of signal, returns amplitude
+        scaling and cut off freqency."""
+        npoints = len(signal)
+        ampl = 2/(np.ceil(npoints/2))
+        step = signal.dtimes[-1]
+        freq = 1/step/2
+        amv = signal.amv
+        return freq, ampl, amv
 
     def pplot(self, ax=None, plot=plt.plot, **kwargs):
         """Reasonable arguments for plot are: plt.plot, plt.semilogy,

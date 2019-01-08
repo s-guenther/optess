@@ -21,7 +21,7 @@ sig = base + noise
 base.pplot()
 sig.pplot()
 
-fft = oe.PSD(sig)
+fft = oe.FFT(sig)
 fft.pplot()
 
 dummybreakpoint = True
