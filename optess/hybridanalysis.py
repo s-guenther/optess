@@ -99,7 +99,8 @@ class SingularData:
                         method=self._interpmethod, fill_value=0)
 
     def pplot(self, ax=None, intergrid=40, nbins=15, cmap='PuBu', **kwargs):
-        y, x = [[*tup] for tup in zip(*self.points)]
+        y = [tup[0] for tup in self.points]
+        x = [tup[1] for tup in self.points]
         vals = list(self.vals)
         ig = intergrid
         xgrid, ygrid = np.meshgrid(np.linspace(1/ig/2, 1-1/ig/2, ig),
