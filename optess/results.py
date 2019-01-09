@@ -340,10 +340,10 @@ def single_to_base_results(singlered):
     hybridred.peakpeh.pweights *= 0
     hybridred.peakpeh.map *= 0
 
-    hybridred.basepsd = hybridred.psd
-    hybridred.peakpsd = copy.deepcopy(hybridred.psd)
-    hybridred.peakpsd.amv = 0
-    hybridred.peakpsd.psd *= 0
+    hybridred.basefft = hybridred.fft
+    hybridred.peakfft = copy.deepcopy(hybridred.fft)
+    hybridred.peakfft.amv = 0
+    hybridred.peakfft.fft *= 0
 
     hybridred.chargepeak = 0
     hybridred.chargebase = 0
@@ -375,10 +375,10 @@ def single_to_peak_results(singlered):
     hybridred.basepeh.pweights *= 0
     hybridred.basepeh.map *= 0
 
-    hybridred.peakpsd = hybridred.psd
-    hybridred.basepsd = copy.deepcopy(hybridred.psd)
-    hybridred.basepsd.amv = 0
-    hybridred.basepsd.psd *= 0
+    hybridred.peakfft = hybridred.fft
+    hybridred.basefft = copy.deepcopy(hybridred.fft)
+    hybridred.basefft.amv = 0
+    hybridred.basefft.fft *= 0
 
     hybridred.chargepeak = 0
     hybridred.chargebase = 0
