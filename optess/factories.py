@@ -108,7 +108,7 @@ class DataFactory:
     def freq(cls, npoints=1000, mu=10, nfreqs=32, arvmean=1,
              freqsupport=(0.05, 1.5, 1.7, 3, 3.2, 4.5),
              ampsupport=(0.9, 1, 0.2, 0.2, 1, 0.9),
-             ampvar=0.0, ampjitter=0.3, freqjitter=0.05,
+             ampvar=0.0, freqvar=0.2, ampjitter=0.3, freqjitter=0.05,
              time=100, seed=None, interpolate='linear', spacing=np.linspace):
         """Similar to distorted sin, but takes a frequency response (as
         freq-amp pairs as input and builds randomized signal which roughly
@@ -128,7 +128,13 @@ class DataFactory:
         ampvarinterp = interp.interp1d(freqsupport, ampvar, interpolate,
                                        fill_value='extrapolate')
 
-        freqs = spacing(freqsupport[0], freqsupport[-1], num=nfreqs)
+        freqs = spacing(freqsupport[0] + 1e-1, freqsupport[-1], num=nfreqs)
+        if spacing is np.linspace:
+            freqoffset = (np.random.rand(freqs.size) - 0.5) * \
+                         freqvar*(freqs[1] - freqs[0])
+            freqoffset[0] = 0
+            freqoffset[-1] = 0
+            freqs += freqoffset
         amps = (ampinterp(freqs) +
                 ampvarinterp(freqs)*np.random.rand(*freqs.shape))
 
