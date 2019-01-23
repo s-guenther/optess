@@ -135,7 +135,7 @@ class HybridAnalysis:
     def _populate_single(self, hyb):
         scaling_factors = self._get_scaling_factors(hyb)
         loss_scale, cycle_scale, charge_scale, form_scale, crest_scale, \
-            ppeh_scale, epeh_scale, psd_scale = scaling_factors
+            ppeh_scale, epeh_scale, fft_scale = scaling_factors
 
         self.single.losses = hyb.single.losses/hyb.single.dim.energy
         self.single.form = hyb.single.signalparameters.form
@@ -147,15 +147,15 @@ class HybridAnalysis:
         self.single.energypehlow = epeh_scale[0]
         self.single.energypehmed = epeh_scale[1]
         self.single.energypehhigh = epeh_scale[2]
-        self.single.psdlow = psd_scale[0][1]
-        self.single.psdmed = psd_scale[1][1]
-        self.single.psdhigh = psd_scale[2][1]
+        self.single.fftlow = fft_scale[0][1]
+        self.single.fftmed = fft_scale[1][1]
+        self.single.ffthigh = fft_scale[2][1]
         self.single.charge = 0
 
     def _populate_base_and_peak(self, hyb):
         scaling_factors = self._get_scaling_factors(hyb)
         loss_scale, cycle_scale, charge_scale, form_scale, crest_scale, \
-            ppeh_scale, epeh_scale, psd_scale = scaling_factors
+            ppeh_scale, epeh_scale, fft_scale = scaling_factors
 
         basefields = ['baselosses', 'basecycles', 'chargebase',
                       'baseparameters.form', 'baseparameters.crest',
@@ -171,17 +171,17 @@ class HybridAnalysis:
                  'form', 'crest',
                  'powerpehlow', 'powerpehmed', 'powerpehhigh',
                  'energypehlow', 'energypehmed', 'energypehhigh',
-                 'psdlow', 'psdmed', 'psdhigh']
+                 'fftlow', 'fftmed', 'ffthigh']
         hooks = [scale_base_losses, scale, scale,
                  scale, scale,
                  powerpehlow, powerpehmed, powerpehhigh,
                  energypehlow, energypehmed, energypehhigh,
-                 psdlow, psdmed, psdhigh]
+                 fftlow, fftmed, ffthigh]
         hookargs = [loss_scale, cycle_scale, charge_scale,
                     form_scale, crest_scale,
                     ppeh_scale[0], ppeh_scale[1], ppeh_scale[2],
                     epeh_scale[0], epeh_scale[1], epeh_scale[2],
-                    psd_scale[0], psd_scale[1], psd_scale[2]]
+                    fft_scale[0], fft_scale[1], fft_scale[2]]
 
         for attr, field, hook, arg in zip(attrs, basefields, hooks, hookargs):
             data = extract_data(hyb, field, copy_peak=False,
@@ -217,23 +217,24 @@ class HybridAnalysis:
         # TODO duplicate code with hooks at end of file
 
         # get integral of single fft
-        psdvals = hyb.single.psd.amplitude
-        psdint = np.cumsum(psdvals)
+        fftvals = hyb.single.fft.amplitude
+        fftint = np.cumsum(fftvals)
         # determine 90% limit
-        psd09 = 0.90*psdint[-1]
-        psdmaxindex = int(np.flatnonzero(np.array(psdint > psd09))[0] + 1)
-        psdval = psdint[psdmaxindex]
-        psd_1_3 = int(psdmaxindex*1/3 + 1)
-        psd_2_3 = int(psdmaxindex*2/3 + 1)
-        psd_scale = ((psdmaxindex,
-                      np.sum(psdvals[0:psd_1_3-1]/psdval)),
-                     (psdmaxindex,
-                      np.sum(psdvals[psd_1_3:psd_2_3-1]/psdval)),
-                     (psdmaxindex,
-                      np.sum(psdvals[psd_2_3:psdmaxindex+1]/psdval)))
+        # TODO magic number
+        fft09 = 0.90*fftint[-1]
+        fftmaxindex = int(np.flatnonzero(np.array(fftint > fft09))[0] + 1)
+        fftval = fftint[fftmaxindex]
+        fft_1_3 = int(fftmaxindex*1/3 + 1)
+        fft_2_3 = int(fftmaxindex*2/3 + 1)
+        fft_scale = ((fftmaxindex,
+                      np.sum(fftvals[0:fft_1_3-1]/fftval)),
+                     (fftmaxindex,
+                      np.sum(fftvals[fft_1_3:fft_2_3-1]/fftval)),
+                     (fftmaxindex,
+                      np.sum(fftvals[fft_2_3:fftmaxindex+1]/fftval)))
 
         return (loss_scale, cycle_scale, charge_scale, form_scale,
-                crest_scale, ppeh_scale, epeh_scale, psd_scale)
+                crest_scale, ppeh_scale, epeh_scale, fft_scale)
 
 
 class StorageResults:
@@ -248,37 +249,37 @@ class StorageResults:
         self.energypehlow = None
         self.energypehmed = None
         self.energypehhigh = None
-        self.psdlow = None
-        self.psdmed = None
-        self.psdhigh = None
+        self.fftlow = None
+        self.fftmed = None
+        self.ffthigh = None
         self.charge = None
 
 
 # ### Hooks
-def psd(points, vals, start, end, singleendindexval):
+def fft(points, vals, start, end, singleendindexval):
     newvals = list()
     absend = singleendindexval[0]
     singleval = singleendindexval[1]
     for val in vals:
         allint = np.sum(val[0:absend]) if np.sum(val) else 1
         partint = np.sum(val[start:end])
-        newvals.append(partint/allint/singleval)
+        newvals.append(partint/allint - singleval)
     return points, newvals
 
 
-def psdlow(points, vals, endindexval):
+def fftlow(points, vals, endindexval):
     start, end = 0, int(endindexval[0]/3)
-    return psd(points, vals, start, end, endindexval)
+    return fft(points, vals, start, end, endindexval)
 
 
-def psdmed(points, vals, endindexval):
+def fftmed(points, vals, endindexval):
     start, end = int(endindexval[0]*1/3), int(endindexval[0]*2/3)
-    return psd(points, vals, start, end, endindexval)
+    return fft(points, vals, start, end, endindexval)
 
 
-def psdhigh(points, vals, endindexval):
+def ffthigh(points, vals, endindexval):
     start, end = int(endindexval[0]*2/3), endindexval[0] + 1
-    return psd(points, vals, start, end, endindexval)
+    return fft(points, vals, start, end, endindexval)
 
 
 # PEH power assumes symmetric storages (P charge == P discharge)
@@ -288,35 +289,35 @@ def psdhigh(points, vals, endindexval):
 # power at one side will simply put into zero-bins
 def powerpehhigh(points, vals, singleval):
     newvals = [float((np.sum(val.pweights[0:2]) +
-                      np.sum(val.pweights[18:]))/singleval)
+                      np.sum(val.pweights[18:])) - singleval)
                for val in vals]
     return points, newvals
 
 
 def powerpehmed(points, vals, singleval):
     newvals = [float((np.sum(val.pweights[2:8]) +
-                      np.sum(val.pweights[12:18]))/singleval)
+                      np.sum(val.pweights[12:18])) - singleval)
                for val in vals]
     return points, newvals
 
 
 def powerpehlow(points, vals, singleval):
-    newvals = [float(np.sum(val.pweights[8:12])/singleval) for val in vals]
+    newvals = [float(np.sum(val.pweights[8:12]) - singleval) for val in vals]
     return points, newvals
 
 
 def energypehlow(points, vals, singleval):
-    newvals = [float(np.sum(val.eweights[0:4])/singleval) for val in vals]
+    newvals = [float(np.sum(val.eweights[0:4]) - singleval) for val in vals]
     return points, newvals
 
 
 def energypehmed(points, vals, singleval):
-    newvals = [float(np.sum(val.eweights[4:16])/singleval) for val in vals]
+    newvals = [float(np.sum(val.eweights[4:16]) - singleval) for val in vals]
     return points, newvals
 
 
 def energypehhigh(points, vals, singleval):
-    newvals = [float(np.sum(val.eweights[16:])/singleval) for val in vals]
+    newvals = [float(np.sum(val.eweights[16:]) - singleval) for val in vals]
     return points, newvals
 
 

@@ -165,7 +165,7 @@ class DataFactory:
         t = np.linspace(time/npoints, time, npoints)
         n = np.random.randn(npoints + numtabs)
 
-        coeffs = scisig.firls(numtabs, freqsupport, ampsupport, nyq=fs)
+        coeffs = scisig.firls(numtabs, freqsupport, ampsupport, nyq=fs/2)
         zi = scisig.lfilter_zi(b=coeffs, a=1)
         z, _ = scisig.lfilter(b=coeffs, a=1, x=n, zi=zi*n[0])
         z = z[numtabs:]
