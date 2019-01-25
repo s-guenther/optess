@@ -10,6 +10,10 @@ from .objective import Objective
 from .storage import Storage
 
 
+class UnknownObjectiveError(ValueError):
+    pass
+
+
 class SingleBuilder:
     def __init__(self):
         self.signal = None
@@ -33,8 +37,12 @@ class SingleBuilder:
 
         if objective.type.name == 'power':
             self._add_peak_cutting_objective()
-        else:
+        elif objective.type.name == 'exact':
+            self._add_exact_objective()
+        elif objective.type.name == 'energy':
             self._add_throughput_objective()
+        else:
+            raise UnknownObjectiveError
 
         self._add_capacity_minimizing_objective()
 
@@ -119,6 +127,16 @@ class SingleBuilder:
             pe.Constraint(model.ind, rule=_cutting_high)
 
     ###########################################################################
+    def _add_exact_objective(self):
+        """Add objective - this is an objective or aim in a larger sense as it
+        will cut peak power which also adds constraints to reach the
+        objective. This one tells the model to exactly follow the input
+        power."""
+        model = self.model
+        model.con_follow_exact = pe.Constraint(model.ind, rule=_follow_exact)
+        model.con_cyclic.deactivate()
+
+    ###########################################################################
     def _add_throughput_objective(self):
         """Add objective - this is an objective or aim in a larger sense as it
         will decrease the amount of energy taken from grid/supply etc. It will
@@ -137,7 +155,7 @@ class SingleBuilder:
 
         model.con_throughput = \
             pe.Constraint(expr=sum(model.deltaplus[ii]*dtimes[ii]
-                                   for ii in model.ind) <= maxenergy )
+                                   for ii in model.ind) <= maxenergy)
 
 
 ###########################################################################
@@ -163,6 +181,14 @@ def _split_delta(mod, ii):
     signal = mod._signal.vals
     return (signal[ii] + mod.power[ii] <=
             mod.deltaplus[ii] + mod.deltaminus[ii])
+
+
+###########################################################################
+# _add_exact_objective(self):
+def _follow_exact(mod, ii):
+    # noinspection PyProtectedMember
+    signal = mod._signal.vals
+    return signal[ii] + mod.power[ii] == 0
 
 
 # ###

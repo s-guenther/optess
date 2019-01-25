@@ -128,7 +128,7 @@ class DataFactory:
         ampvarinterp = interp.interp1d(freqsupport, ampvar, interpolate,
                                        fill_value='extrapolate')
 
-        freqs = spacing(freqsupport[0] + 1e-1, freqsupport[-1], num=nfreqs)
+        freqs = spacing(freqsupport[0] + 1e-3, freqsupport[-1], num=nfreqs)
         if spacing is np.linspace:
             freqoffset = (np.random.rand(freqs.size) - 0.5) * \
                          freqvar*(freqs[1] - freqs[0])

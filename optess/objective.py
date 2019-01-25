@@ -23,6 +23,7 @@ class _ObjectiveType(Enum):
     it cuts power, in the second case, it limits the energy taken from grid"""
     power = 'power'
     energy = 'energy'
+    exact = 'exact'
 
 
 _ObjectiveValue = namedtuple('_ObjectiveValue', 'min max')
