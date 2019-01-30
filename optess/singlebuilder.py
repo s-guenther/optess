@@ -179,7 +179,7 @@ def _cutting_high(mod, ii):
 def _split_delta(mod, ii):
     # noinspection PyProtectedMember
     signal = mod._signal.vals
-    return (signal[ii] + mod.power[ii] <=
+    return (signal[ii] + mod.power[ii] ==
             mod.deltaplus[ii] + mod.deltaminus[ii])
 
 
