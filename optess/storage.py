@@ -81,3 +81,10 @@ class Storage:
 
     def __rmul__(self, other):
         return self.__mul__(other)
+
+
+class FullStorage(Storage):
+    def __init__(self, energy, power, efficiency, selfdischarge):
+        super().__init__(power, efficiency, selfdischarge)
+        self.energy = float(energy)
+    # TODO add special functions
