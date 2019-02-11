@@ -3,6 +3,7 @@ for a single energy storage system or hybrid energy storage system"""
 
 from .optimize_ess import OptimizeSingleESS, OptimizeHybridESS
 from .hybriddia import HybridDia
+from .overdimdia import OverdimDia
 from .factories import DataFactory, StorageFactory, ObjectiveFactory, \
                        SingleSetupFactory, HybridSetupFactory
 from .objective import Objective
@@ -11,3 +12,4 @@ from .signal import Signal
 from .signalanalysis import FFT, PEHMap
 from .hybridanalysis import HybridAnalysis
 from optess import torque
+from optess import overdimdia

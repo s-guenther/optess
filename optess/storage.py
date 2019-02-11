@@ -87,4 +87,14 @@ class FullStorage(Storage):
     def __init__(self, energy, power, efficiency, selfdischarge):
         super().__init__(power, efficiency, selfdischarge)
         self.energy = float(energy)
+
+    def __repr__(self):
+        strfmt = '<{cls}(Power({pwr.min}, {pwr.max}), {energy}, ' \
+                 'Efficiency({eff.charge}, {eff.discharge}), {selfdis})>'
+        fields = dict(cls=self.__class__.__name__,
+                      pwr=self.power,
+                      energy=self.energy,
+                      eff=self.efficiency,
+                      selfdis=self.selfdischarge)
+        return strfmt.format(**fields)
     # TODO add special functions

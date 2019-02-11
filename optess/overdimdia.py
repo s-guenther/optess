@@ -27,7 +27,7 @@ class NoResultsComputedError(LookupError):
 
 # --- Superclass
 
-class OverdimDia(ABC):
+class AbstractOverdimDia(ABC):
     # noinspection PyArgumentList
     def __init__(self, signal, singlestor, reduced_hybrid_result, objective,
                  strategy='inter', solver='gurobi', name=None,
@@ -64,7 +64,7 @@ class OverdimDia(ABC):
                     self.strategy, self.solver, None)
         return initargs
 
-    def build_mesh_arrays(self, overdimfactor=(2, 2), nraster=(6, 6),
+    def build_mesh_arrays(self, overdimfactor=(1.5, 1.5), nraster=(4, 4),
                           start=(1, 1)):
         try:
             overdimfactor[0]
@@ -86,8 +86,8 @@ class OverdimDia(ABC):
         self.meshres = np.empty(self.meshx.shape, dtype=object)
         self.meshcycle = np.empty(self.meshx.shape)
 
-        for irow in self.meshx.shape[0]:
-            for icol in self.meshx.shape[1]:
+        for irow in range(self.meshx.shape[0]):
+            for icol in range(self.meshx.shape[1]):
                 # Imitates GoF Template Pattern --> delegated to subclass
                 overxy = self.meshx[irow, icol], self.meshy[irow, icol]
                 self.meshstor[irow, icol] = self.build_storage_pair(*overxy)
@@ -99,6 +99,16 @@ class OverdimDia(ABC):
 
     def compute(self, *args, **kwargs):
         self.compute_parallel(*args, **kwargs)
+
+    def compute_serial(self):
+        self._check_mesh_arrays()
+
+        fullstorageslist = self.meshstor.flatten()
+        for flatind, storagepair in enumerate(tqdm(fullstorageslist)):
+            res, cycles = self.calculate_single_point(storagepair)
+            ind = np.unravel_index(flatind, self.meshstor.shape)
+            self.meshres[ind] = res
+            self.meshcycle[ind] = cycles
 
     def compute_parallel(self, workers=4):
         self._check_mesh_arrays()
@@ -130,7 +140,7 @@ class OverdimDia(ABC):
         res = ReducedHybridResults(opt, savepath=self.name,
                                    save_to_disc=self._save_opt_results)
         cycles = res.basecycles
-        return res, cycles/self.single.cycles
+        return res, cycles/self.orig_res.basecycles
 
     def pplot(self, ax=None):
         if ax is None:
@@ -147,7 +157,7 @@ class OverdimDia(ABC):
 
 # --- Subclasses
 
-class OverdimDiaBase(OverdimDia):
+class OverdimDiaBase(AbstractOverdimDia):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if self.name is None:
@@ -167,7 +177,7 @@ class OverdimDiaBase(OverdimDia):
         ax.set_ylabel('Base Power @ Peak=const.')
 
 
-class OverdimDiaPeak(OverdimDia):
+class OverdimDiaPeak(AbstractOverdimDia):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if self.name is None:
@@ -187,7 +197,7 @@ class OverdimDiaPeak(OverdimDia):
         ax.set_ylabel('Peak Power @ Base=const.')
 
 
-class OverdimDiaDim(OverdimDia):
+class OverdimDiaDim(AbstractOverdimDia):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if self.name is None:
@@ -211,7 +221,7 @@ class OverdimDiaDim(OverdimDia):
         ax.set_ylabel('Peak Energy @ P/E=const.')
 
 
-class OverdimDiaEnergy(OverdimDia):
+class OverdimDiaEnergy(AbstractOverdimDia):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if self.name is None:
@@ -235,7 +245,7 @@ class OverdimDiaEnergy(OverdimDia):
         ax.set_ylabel('Peak Energy @ Pb, Pp=const.')
 
 
-class OverdimDiaPower(OverdimDia):
+class OverdimDiaPower(AbstractOverdimDia):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if self.name is None:
@@ -259,7 +269,7 @@ class OverdimDiaPower(OverdimDia):
         ax.set_ylabel('Peak Power @ Eb, Ep=const.')
 
 
-class OverdimDiaCrossEbPp(OverdimDia):
+class OverdimDiaCrossEbPp(AbstractOverdimDia):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if self.name is None:
@@ -283,7 +293,7 @@ class OverdimDiaCrossEbPp(OverdimDia):
         ax.set_ylabel('Peak Power @ Ep, Pb=const.')
 
 
-class OverdimDiaCrossEpPb(OverdimDia):
+class OverdimDiaCrossEpPb(AbstractOverdimDia):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if self.name is None:
@@ -307,7 +317,7 @@ class OverdimDiaCrossEpPb(OverdimDia):
         ax.set_ylabel('Base Power @ Eb, Pp=const.')
 
 
-class OverdimDiaMixed(OverdimDia):
+class OverdimDiaMixed(AbstractOverdimDia):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if self.name is None:
@@ -329,3 +339,6 @@ class OverdimDiaMixed(OverdimDia):
     def _label_axes(self, ax):
         ax.set_xlabel('Base Energy @ Pb, Pp/Ep=const.')
         ax.set_ylabel('Peak Energy @ Pb, Pp/Ep=const.')
+
+
+OverdimDia = OverdimDiaMixed
