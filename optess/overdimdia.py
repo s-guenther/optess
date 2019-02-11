@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
 
-from collections import OrderedDict
+from abc import ABC, abstractmethod
+import numpy as np
+import multiprocessing as mp
+from tqdm import tqdm
+from matplotlib import pyplot as plt
 
 from .signal import Signal
 from .objective import Objective, Solver, Strategy
 from .storage import FullStorage
+from .optimize_ess import OptimizeHybridESS
+from .results import ReducedHybridResults
 
 
 class UnknownPlotTypeError(ValueError):
@@ -15,97 +21,311 @@ class UnknownComputeTypeError(ValueError):
     pass
 
 
-class OverdimDia:
+class NoResultsComputedError(LookupError):
+    pass
+
+
+# --- Superclass
+
+class OverdimDia(ABC):
     # noinspection PyArgumentList
-    def __init__(self, signal, reduced_hybrid_result, objective,
-                 strategy='inter', solver='gurobi', name='Overdimensioning'):
+    def __init__(self, signal, singlestor, reduced_hybrid_result, objective,
+                 strategy='inter', solver='gurobi', name=None,
+                 save_opt_results=True):
         self.signal = Signal(signal)
-        self.red_hyb_result = reduced_hybrid_result
+        self.single = singlestor
         self.objective = Objective(objective)
         self.solver = Solver(solver)
         self.strategy = Strategy(strategy)
-        self.name = str(name)
+        self.name = name
+        self.orig_res = reduced_hybrid_result
+        self._save_opt_results = save_opt_results
 
         # Build Full Storages
+        red = reduced_hybrid_result
+        self.base = FullStorage(red.basedim.energy,
+                                red.basedim.power,
+                                singlestor.efficiency,
+                                singlestor.selfdischarge)
+        self.peak = FullStorage(red.peakdim.energy,
+                                red.peakdim.power,
+                                singlestor.efficiency,
+                                singlestor.selfdischarge)
 
         # Result Fields
-        self.base = OrderedDict()
-        self.peak = OrderedDict()
-        self.energy = OrderedDict()
-        self.power = OrderedDict()
-        self.cross_ebpp = OrderedDict()
-        self.cross_eppb = OrderedDict()
-        self.dim = OrderedDict()
-        self.mixed = OrderedDict()
+        self.meshx = None
+        self.meshy = None
+        self.meshstor = None
+        self.meshres = None
+        self.meshcycle = None
 
-    # --- Calculation routines
-    def compute_base(self):
-        pass
+    def get_init_args(self):
+        initargs = (self.signal, self.single, self.orig_res, self.objective,
+                    self.strategy, self.solver, None)
+        return initargs
 
-    def compute_peak(self):
-        pass
-
-    def compute_energy(self):
-        pass
-
-    def compute_power(self):
-        pass
-
-    def compute_cross_ebpp(self):
-        pass
-
-    def compute_cross_eppb(self):
-        pass
-
-    def compute_dim(self):
-        pass
-
-    def compute_mixed(self):
-        pass
-
-    def compute(self, ctype='mixed'):
-        compute_fcn_name = 'compute_' + ctype
+    def build_mesh_arrays(self, overdimfactor=(2, 2), nraster=(6, 6),
+                          start=(1, 1)):
         try:
-            compute_fcn = getattr(self, compute_fcn_name)
-        except AttributeError:
-            raise UnknownComputeTypeError
-        compute_fcn()
-
-    def _abstract_compute(self):
-        pass
-
-    # --- Plotting Routines
-    def pplot_base(self, ax=None):
-        pass
-
-    def pplot_peak(self, ax=None):
-        pass
-
-    def pplot_energy(self, ax=None):
-        pass
-
-    def pplot_power(self, ax=None):
-        pass
-
-    def pplot_cross_ebpp(self, ax=None):
-        pass
-
-    def pplot_cross_eppb(self, ax=None):
-        pass
-
-    def pplot_dim(self, ax=None):
-        pass
-
-    def pplot_mixed(self, ax=None):
-        pass
-
-    def pplot(self, ax=None, ptype='mixed'):
-        pplot_fcn_name = 'pplot_' + ptype
+            overdimfactor[0]
+        except TypeError:
+            overdimfactor = [overdimfactor]*2
         try:
-            pplot_fcn = getattr(self, pplot_fcn_name)
-        except AttributeError:
-            raise UnknownPlotTypeError
-        pplot_fcn(ax=ax)
+            nraster[0]
+        except TypeError:
+            nraster = [nraster]*2
+        try:
+            start[0]
+        except TypeError:
+            start = [start]*2
 
-    def _abstract_pplot(self, ax=None):
+        x = np.linspace(start[0], overdimfactor[0], nraster[0])
+        y = np.linspace(start[1], overdimfactor[1], nraster[1])
+        self.meshx, self.meshy = np.meshgrid(x, y)
+        self.meshstor = np.empty(self.meshx.shape, dtype=object)
+        self.meshres = np.empty(self.meshx.shape, dtype=object)
+        self.meshcycle = np.empty(self.meshx.shape)
+
+        for irow in self.meshx.shape[0]:
+            for icol in self.meshx.shape[1]:
+                # Imitates GoF Template Pattern --> delegated to subclass
+                overxy = self.meshx[irow, icol], self.meshy[irow, icol]
+                self.meshstor[irow, icol] = self.build_storage_pair(*overxy)
+
+    @abstractmethod
+    def build_storage_pair(self, overx, overy):
+        # GoF Template function delegated to subclasses
         pass
+
+    def compute(self, *args, **kwargs):
+        self.compute_parallel(*args, **kwargs)
+
+    def compute_parallel(self, workers=4):
+        self._check_mesh_arrays()
+
+        mp.freeze_support()  # for Windows Support
+        with mp.Pool(processes=workers, initializer=tqdm.set_lock,  # WinSup
+                     initargs=(mp.RLock(),)) as pool:
+            fullstorages = self.meshstor.flatten()
+            res_cycles = list(tqdm(pool.imap(self.calculate_single_point,
+                                             fullstorages),
+                                   total=len(fullstorages)))
+        for flatind, (res, cycles) in enumerate(res_cycles):
+            ind2d = np.unravel_index(flatind, self.meshstor.shape)
+            self.meshres[ind2d] = res
+            self.meshcycle[ind2d] = cycles
+
+    def _check_mesh_arrays(self):
+        anyempty = (self.meshx is None or
+                    self.meshy is None or
+                    self.meshstor is None)
+        if anyempty:
+            self.build_mesh_arrays()
+
+    def calculate_single_point(self, fullstorages):
+        fullbase, fullpeak = fullstorages
+        opt = OptimizeHybridESS(self.signal, fullbase, fullpeak,
+                                self.objective, self.strategy, self.solver)
+        opt.solve_pyomo_model(fullbase.energy, fullpeak.energy)
+        res = ReducedHybridResults(opt, savepath=self.name,
+                                   save_to_disc=self._save_opt_results)
+        cycles = res.basecycles
+        return res, cycles/self.single.cycles
+
+    def pplot(self, ax=None):
+        if ax is None:
+            ax = plt.figure().add_subplot(1, 1, 1)
+        cont = ax.contour(self.meshx, self.meshy, self.meshcycle)
+        plt.clabel(cont, inline=True, fontsize=8)
+        self._label_axes(ax)
+        ax.set_title(self.name)
+
+    @abstractmethod
+    def _label_axes(self, ax):
+        pass
+
+
+# --- Subclasses
+
+class OverdimDiaBase(OverdimDia):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.name is None:
+            self.name = 'Overdimensioning Base Energy/Power @ Peak=const.'
+
+    def build_storage_pair(self, overx, overy):
+        bb = self.base
+        baseover = FullStorage(bb.energy*overx,
+                               [bb.power.min*overy, bb.power.max*overy],
+                               bb.efficiency,
+                               bb.selfdischarge)
+        peakover = self.peak
+        return baseover, peakover
+
+    def _label_axes(self, ax):
+        ax.set_xlabel('Base Energy @ Peak=const.')
+        ax.set_ylabel('Base Power @ Peak=const.')
+
+
+class OverdimDiaPeak(OverdimDia):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.name is None:
+            self.name = 'Overdimensioning Peak Energy/Power @ Base=const.'
+
+    def build_storage_pair(self, overx, overy):
+        baseover = self.base
+        pp = self.peak
+        peakover = FullStorage(pp.energy*overx,
+                               [pp.power.min*overy, pp.power.max*overy],
+                               pp.efficiency,
+                               pp.selfdischarge)
+        return baseover, peakover
+
+    def _label_axes(self, ax):
+        ax.set_xlabel('Peak Energy @ Base=const.')
+        ax.set_ylabel('Peak Power @ Base=const.')
+
+
+class OverdimDiaDim(OverdimDia):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.name is None:
+            self.name = 'Overdimensioning Base, Peak @ E/P=const.'
+
+    def build_storage_pair(self, overx, overy):
+        bb = self.base
+        pp = self.peak
+        baseover = FullStorage(bb.energy*overx,
+                               [bb.power.min*overx, bb.power.max*overx],
+                               bb.efficiency,
+                               bb.selfdischarge)
+        peakover = FullStorage(pp.energy*overy,
+                               [pp.power.min*overy, pp.power.max*overy],
+                               pp.efficiency,
+                               pp.selfdischarge)
+        return baseover, peakover
+
+    def _label_axes(self, ax):
+        ax.set_xlabel('Base Energy @ P/E=const.')
+        ax.set_ylabel('Peak Energy @ P/E=const.')
+
+
+class OverdimDiaEnergy(OverdimDia):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.name is None:
+            self.name = 'Overdimensioning Base, Peak Energy @ P=const.'
+
+    def build_storage_pair(self, overx, overy):
+        bb = self.base
+        pp = self.peak
+        baseover = FullStorage(bb.energy*overx,
+                               [bb.power.min, bb.power.max],
+                               bb.efficiency,
+                               bb.selfdischarge)
+        peakover = FullStorage(pp.energy*overy,
+                               [pp.power.min, pp.power.max],
+                               pp.efficiency,
+                               pp.selfdischarge)
+        return baseover, peakover
+
+    def _label_axes(self, ax):
+        ax.set_xlabel('Base Energy @ Pb, Pp=const.')
+        ax.set_ylabel('Peak Energy @ Pb, Pp=const.')
+
+
+class OverdimDiaPower(OverdimDia):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.name is None:
+            self.name = 'Overdimensioning Base, Peak Power @ E=const.'
+
+    def build_storage_pair(self, overx, overy):
+        bb = self.base
+        pp = self.peak
+        baseover = FullStorage(bb.energy,
+                               [bb.power.min*overx, bb.power.max*overx],
+                               bb.efficiency,
+                               bb.selfdischarge)
+        peakover = FullStorage(pp.energy*overy,
+                               [pp.power.min*overy, pp.power.max*overy],
+                               pp.efficiency,
+                               pp.selfdischarge)
+        return baseover, peakover
+
+    def _label_axes(self, ax):
+        ax.set_xlabel('Base Power @ Eb, Ep=const.')
+        ax.set_ylabel('Peak Power @ Eb, Ep=const.')
+
+
+class OverdimDiaCrossEbPp(OverdimDia):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.name is None:
+            self.name = 'Overdimensioning Cross EBase, PPeak @ Pb,Ep=const.'
+
+    def build_storage_pair(self, overx, overy):
+        bb = self.base
+        pp = self.peak
+        baseover = FullStorage(bb.energy*overx,
+                               [bb.power.min, bb.power.max],
+                               bb.efficiency,
+                               bb.selfdischarge)
+        peakover = FullStorage(pp.energy,
+                               [pp.power.min*overy, pp.power.max*overy],
+                               pp.efficiency,
+                               pp.selfdischarge)
+        return baseover, peakover
+
+    def _label_axes(self, ax):
+        ax.set_xlabel('Base Energy @ Ep, Pb=const.')
+        ax.set_ylabel('Peak Power @ Ep, Pb=const.')
+
+
+class OverdimDiaCrossEpPb(OverdimDia):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.name is None:
+            self.name = 'Overdimensioning Cross EPeak, PBase @ Pp,Eb=const.'
+
+    def build_storage_pair(self, overx, overy):
+        bb = self.base
+        pp = self.peak
+        baseover = FullStorage(bb.energy,
+                               [bb.power.min*overy, bb.power.max*overy],
+                               bb.efficiency,
+                               bb.selfdischarge)
+        peakover = FullStorage(pp.energy*overx,
+                               [pp.power.min, pp.power.max],
+                               pp.efficiency,
+                               pp.selfdischarge)
+        return baseover, peakover
+
+    def _label_axes(self, ax):
+        ax.set_xlabel('Peak Energy @ Eb, Pp=const.')
+        ax.set_ylabel('Base Power @ Eb, Pp=const.')
+
+
+class OverdimDiaMixed(OverdimDia):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.name is None:
+            self.name = 'Overdimensioning Mixed Eb, Ep @ Pb, Pp/Ep=const.'
+
+    def build_storage_pair(self, overx, overy):
+        bb = self.base
+        pp = self.peak
+        baseover = FullStorage(bb.energy*overx,
+                               [bb.power.min, bb.power.max],
+                               bb.efficiency,
+                               bb.selfdischarge)
+        peakover = FullStorage(pp.energy*overy,
+                               [pp.power.min*overy, pp.power.max*overy],
+                               pp.efficiency,
+                               pp.selfdischarge)
+        return baseover, peakover
+
+    def _label_axes(self, ax):
+        ax.set_xlabel('Base Energy @ Pb, Pp/Ep=const.')
+        ax.set_ylabel('Peak Energy @ Pb, Pp/Ep=const.')
