@@ -11,5 +11,6 @@ from .storage import Storage
 from .signal import Signal
 from .signalanalysis import FFT, PEHMap
 from .hybridanalysis import HybridAnalysis
+from .singledia import SingleDia
 from optess import torque
 from optess import overdimdia

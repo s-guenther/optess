@@ -7,9 +7,9 @@ outputs.
 import optess as oe
 
 signal = oe.DataFactory.rand(200, mu=1, freq=(6, 10),
-                          ampl=(1, 3), time=100, seed=200)
+                             amp=(1, 3), time=100, seed=200)
 signal.pplot()
-objective = oe.Objective('energy', 170)
+objective = oe.Objective('energy', 105)
 power = 2.1
 storage = oe.Storage(power, 0.95, 1e50)
 opt = oe.OptimizeSingleESS(signal, storage, objective)
