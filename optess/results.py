@@ -299,9 +299,9 @@ class ReducedSingleResults:
         # add all, but resample to a reasonable amount of data
 
     def _save_to_disc(self, savepath, optim_case):
-        tag = '{:04x}'.format(randint(0, 16**4))
+        tag = '{:04x}'.format(randint(0, 16**4-1))
         while os.path.isfile(os.path.join(savepath, tag)):
-            tag = '{:04x}'.format(randint(0, 16**4))
+            tag = '{:04x}'.format(randint(0, 16**4-1))
         self._filename = os.path.join(savepath, tag)
         optim_case.save(self._filename)
 

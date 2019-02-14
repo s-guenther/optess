@@ -11,3 +11,5 @@ build/
 venv/
 *.lp
 *.gurobi.txt
+*.sgl
+*.sig

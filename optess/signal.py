@@ -4,6 +4,8 @@ import operator
 from overload import overload
 import numpy as np
 from matplotlib import pyplot as plt
+import pickle
+from random import randint
 
 from .utility import make_empty_axes
 
@@ -102,6 +104,33 @@ class Signal:
     def pprint(self):
         # TODO implement
         pass
+
+    def save(self, filename=None):
+        if filename is None:
+            tag = '{:04x}'.format(randint(0, 16**4-1))
+            template = 'signal_{}_n_{}_t_{}'
+            fields = (tag, len(self), self.times[-1])
+            filename = template.format(*fields)
+        sep = '.'
+        try:
+            filename, fileend = filename.split(sep)
+        except ValueError:
+            filename, fileend = filename, 'sig'
+
+        with open(sep.join([filename, fileend]), 'wb') as file:
+            pickle.dump(self, file)
+
+    @staticmethod
+    def load(filename):
+        sep = '.'
+        try:
+            filename, fileend = filename.split(sep)
+        except ValueError:
+            filename, fileend = filename, 'sig'
+
+        with open(sep.join([filename, fileend]), 'rb') as file:
+            sig = pickle.load(file)
+        return sig
 
     def _validate(self):
         is_strictly_monotoneous = all(val > 0 for val in self.dtimes)
