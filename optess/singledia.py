@@ -55,6 +55,14 @@ class SingleDia:
         emin = max(0, esupply - efeedin)
         return pmax, emin, esupply
 
+    def rel_to_abs_objective(self, relobj):
+        _, emin, esupply = self.get_estimate_data()
+        return emin + (1 - relobj)*(esupply - emin)
+
+    def abs_to_rel_objective(self, absobj):
+        _, emin, esupply = self.get_estimate_data()
+        return 1 - (absobj - emin)/(esupply - emin)
+
     def calculate_point(self, storage, objval):
         objective = Objective('energy', objval)
         optsingle = OptimizeSingleESS(self.signal, storage, objective,
@@ -208,6 +216,7 @@ class SingleDia:
             ax = plt.figure().add_subplot(1, 1, 1)
             ax.set_xlabel('Energy')
             ax.set_ylabel('Power')
+            ax.set_title(self.name)
 
         for relobj, (energies, powers) in self.results.items():
             ax.plot(energies, powers, color='b')
