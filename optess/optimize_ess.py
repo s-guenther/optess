@@ -249,7 +249,7 @@ class OptimizeHybridESS(AbstractOptimizeESS):
     """
 
     def __init__(self, signal=None, base=None, peak=None, objective=None,
-                 strategy='inter', solver='gurobi',
+                 singleenergy=None, strategy='inter', solver='gurobi',
                  name='Hybrid Storage Optimization'):
         super().__init__(signal=signal, objective=objective, solver=solver,
                          name=name)
@@ -257,6 +257,8 @@ class OptimizeHybridESS(AbstractOptimizeESS):
         self._base = None
         self._peak = None
         self._strategy = None
+        # TODO implement as read only property
+        self.singleenergy = singleenergy
 
         if base is not None:
             self.base = base
@@ -332,7 +334,8 @@ class OptimizeHybridESS(AbstractOptimizeESS):
 
     def _build(self):
         return self._builder.minimize_energy(self.signal, self.base, self.peak,
-                                             self.objective, self.strategy)
+                                             self.objective, self.singleenergy,
+                                             self.strategy)
 
     def _build_2nd_pyomo_model(self, baseenergy, peakenergy):
         if self.model:

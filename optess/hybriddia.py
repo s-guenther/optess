@@ -270,9 +270,10 @@ class HybridDia:
         peak = (1-cut)*self.storage*DIMTOL
         objective = self.objective
         solver = self.solver
+        singleenergy = self.energycapacity
 
         optim_case = OptimizeHybridESS(signal, base, peak, objective,
-                                       strategy, solver)
+                                       singleenergy, strategy, solver)
         optim_case.solve_pyomo_model()
 
         results = ReducedHybridResults(optim_case, savepath=self.name,

@@ -23,16 +23,22 @@ class HybridBuilder:
         self.strategy = None
         self.model = None
         self.model_2nd = None
+        self.singleenergy = None
 
     ###########################################################################
     # noinspection PyArgumentList
-    def minimize_energy(self, signal, base, peak, objective,
+    def minimize_energy(self, signal, base, peak, objective, singleenergy=None,
                         strategy=Strategy.inter, name='Hybrid EES Model'):
         self.signal = Signal(signal)
         self.base = Storage(base)
         self.peak = Storage(peak)
         self.objective = Objective(objective)
         self.strategy = Strategy(strategy)
+
+        if singleenergy is None:
+            self.singleenergy = 1e100
+        else:
+            self.singleenergy = singleenergy
 
         self.model = pe.ConcreteModel(name=name)
 
@@ -111,6 +117,7 @@ class HybridBuilder:
         base = self.base
         peak = self.peak
         objective = self.objective
+        singleenergy = self.singleenergy
         model = self.model
 
         # Set for range of variables
@@ -120,7 +127,7 @@ class HybridBuilder:
         # steps
         self.model.objexpr = 0
 
-        _add_aux_vars(model, signal, base, peak, objective)
+        _add_aux_vars(model, signal, base, peak, singleenergy, objective)
         _add_power_vars(model)
         _add_energy_vars(model)
         _add_binary_vars(model)
@@ -137,6 +144,7 @@ class HybridBuilder:
         _integrate_power_constraint(model)
         _cyclic_energy_constraint(model)
         _energy_lower_max_constraint(model)
+        _energies_add_to_single_energy_constraint(model)
         _binary_bounds_constraint(model)
         _binary_interval_locks(model)
         _binary_cross_locks(model)
@@ -267,11 +275,12 @@ def _follow_exact(mod, ii):
 # ###
 
 ###############################################################################
-def _add_aux_vars(model, signal, base, peak, objective):
+def _add_aux_vars(model, signal, base, peak, singleenergy, objective):
     model._signal = signal
     model._base = base
     model._peak = peak
     model._objective = objective
+    model.singleenergycapacity = singleenergy
 
 
 ###############################################################################
@@ -470,6 +479,13 @@ def _energy_lower_max_constraint(model):
         pe.Constraint(expr=(model.baseenergyinit <= model.baseenergycapacity))
     model.con_peakenergyinitlowermax = \
         pe.Constraint(expr=(model.peakenergyinit <= model.peakenergycapacity))
+
+
+def _energies_add_to_single_energy_constraint(model):
+    model.con_base_plus_peak_is_single = \
+        pe.Constraint(expr=(model.baseenergycapacity +
+                            model.peakenergycapacity <=
+                            model.singleenergycapacity))
 
 
 ###############################################################################
