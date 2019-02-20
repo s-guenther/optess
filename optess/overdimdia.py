@@ -135,7 +135,8 @@ class AbstractOverdimDia(ABC):
     def calculate_single_point(self, fullstorages):
         fullbase, fullpeak = fullstorages
         opt = OptimizeHybridESS(self.signal, fullbase, fullpeak,
-                                self.objective, self.strategy, self.solver)
+                                self.objective, None,
+                                self.strategy, self.solver)
         opt.solve_pyomo_model(fullbase.energy, fullpeak.energy)
         res = ReducedHybridResults(opt, savepath=self.name,
                                    save_to_disc=self._save_opt_results)

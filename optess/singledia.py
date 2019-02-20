@@ -189,10 +189,9 @@ class SingleDia:
         energies = np.concatenate([fine_e, coarse_e])
 
         # Sort all
-        ind = np.flip(np.argsort(energies))
-        powers = powers[ind]
-        energies = energies[ind]
-        powers, energies = self._filter_invalid(powers, energies)
+        powers.sort()
+        energies.sort()
+        energies = np.flip(energies)
         time.sleep(0.01)
         print('\n----------------------------------------------------------')
         print('... done\n')
@@ -208,7 +207,8 @@ class SingleDia:
             self.results[relobj] = res
         print('----------------\n... all done\n', flush=True)
 
-    def pplot(self, ax=None):
+    # noinspection PyTypeChecker
+    def pplot(self, ax=None, add_pareto_borders=None):
         if not self.results:
             print('Compute results with singledia.compute() first')
             return
@@ -217,9 +217,16 @@ class SingleDia:
             ax.set_xlabel('Energy')
             ax.set_ylabel('Power')
             ax.set_title(self.name)
-
         for relobj, (energies, powers) in self.results.items():
+            if add_pareto_borders:
+                energies = np.insert(energies, 0, add_pareto_borders[0])
+                powers = np.insert(powers, 0, powers[0])
+                energies = np.append(energies, energies[-1])
+                powers = np.append(powers, add_pareto_borders[1])
             ax.plot(energies, powers, color='b')
+        ax.autoscale(tight=True)
+        ax.set_xlim(0)
+        ax.set_ylim(0)
 
     def save(self, filename=None):
         if filename is None:
