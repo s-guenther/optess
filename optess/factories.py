@@ -200,7 +200,7 @@ class DataFactory:
         angle = np.interp(np.arange(rad.size), fsupport, anglesupport)
         fftnew = polar2cart(rad, angle)
         npoints = int(len(fftnew)/2)
-        fftnew[-npoints:] = np.flip(fftnew[1:npoints+1].conj())
+        fftnew[-npoints:] = fftnew[1:npoints+1].conj()[::-1]
         valsnew = np.fft.ifft(fftnew).real
         return Signal(sig.times, valsnew)
 
