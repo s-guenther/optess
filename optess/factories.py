@@ -176,6 +176,34 @@ class DataFactory:
 
         return sig
 
+    @staticmethod
+    def alter_signal(sig, amps=0.2, phase=0.5, seed=None):
+        nsup = 20
+        rand = np.random.rand
+        if seed is None:
+            seed = np.random.randint(0, int(1e6))
+            print('Randomly chosen seed is {}.'.format(seed))
+        np.random.seed(seed)
+        vals = sig.vals
+        fft = np.fft.fft(vals)
+        rad = fft*(1 + (2*rand(fft.size) - 1)*amps)
+        rad[0] = fft[0]
+        anglesupport = np.concatenate([[0], rand(nsup)*np.pi - np.pi/2])
+        anglesupport[anglesupport > 0] = \
+            anglesupport[anglesupport > 0]*0.5 + np.pi/4
+        anglesupport[anglesupport < 0] = \
+            anglesupport[anglesupport < 0]*0.5 - np.pi/4
+        anglesupport *= phase
+        fsupport = \
+            np.arange(anglesupport.size)*np.ceil(fft.size/anglesupport.size)
+        fsupport[1] = 1
+        angle = np.interp(np.arange(rad.size), fsupport, anglesupport)
+        fftnew = polar2cart(rad, angle)
+        npoints = int(len(fftnew)/2)
+        fftnew[-npoints:] = np.flip(fftnew[1:npoints+1].conj())
+        valsnew = np.fft.ifft(fftnew).real
+        return Signal(sig.times, valsnew)
+
 
 class StorageFactory:
     """Builds a storage with predefined loss models. Currently implemented
@@ -257,3 +285,6 @@ def randspace(start, stop, npoints, jitter=0.5):
     randpoints[-1] = stop
     return randpoints
 
+
+def polar2cart(radius, angle_in_rad):
+    return radius*np.cos(angle_in_rad) + 1j*radius*np.sin(angle_in_rad)
