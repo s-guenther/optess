@@ -72,6 +72,48 @@ class Signal:
         """Crest Factor"""
         return max(self.vals)/self.rms
 
+    def concat(self, other, plausibility_check=True):
+        if plausibility_check:
+            # TODO implement as warnings
+            dt1 = np.mean(self.dtimes)
+            dt2 = np.mean(other.dtimes)
+            if dt1/dt2 > 10 or dt2/dt1 > 10:
+                print('Warning: Sampling Rates of signals differ by a factor '
+                      'of 10 or more.')
+            v1 = np.mean(self.vals)
+            v2 = np.mean(other.vals)
+            if v1/v2 > 10 or v2/v1 > 10:
+                print('Warning: Magnitudes of signals differ by a factor of '
+                      '10 or more.')
+        t1 = self.times
+        t2 = other.times + t1[-1]
+        tt = np.concatenate([t1, t2])
+        vv = np.concatenate([self.vals, other.vals])
+        return Signal(tt, vv)
+
+    def append(self, other, plausibility_check=True):
+        """alias for concat"""
+        return self.concat(other, plausibility_check)
+
+    @classmethod
+    def multi_concat(cls, signals, plausibility_check=True):
+        if plausibility_check:
+            # TODO implement as warnings
+            dts = [np.mean(signal.dtimes) for signal in signals]
+            if max(dts)/min(dts) > 10:
+                print('Warning: Sampling Rates of signals differ by a factor '
+                      'of 10 or more')
+            vs = [np.mean(signal.vals) for signal in signals]
+            if max(vs)/min(vs) > 10:
+                print('Warning: Magnitudes of signals differ by a factor of '
+                      '10 or more.')
+        offsets = np.cumsum([signal.times[-1] for signal in signals])
+        offsets = np.insert(offsets[:-1], 0, 0)
+        tt = np.concatenate([signal.times + offset
+                             for signal, offset in zip(signals, offsets)])
+        vv = np.concatenate([signal.vals for signal in signals])
+        return Signal(tt, vv)
+
     def integrate(self, int_constant=0):
         """Integrates the signal and returns the integral as a new signal."""
         energies = np.cumsum(self.vals*self.dtimes) + int_constant
