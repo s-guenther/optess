@@ -114,6 +114,38 @@ class Signal:
         vv = np.concatenate([signal.vals for signal in signals])
         return Signal(tt, vv)
 
+    def burst_split(self, n):
+        """Evenly splits signal into n new signals of equal length (within
+        integer rounding precision)."""
+        npoints = len(self)
+        cuts = np.linspace(0, npoints, n+1)
+        cuts[-1] += 1
+        cuts = np.array(np.round(cuts), dtype=int)
+        starts = cuts[:-1]
+        ends = cuts[1:]
+        offinds = (starts - 1)[1:]
+        offsets = np.concatenate([[0], [self.times[ind] for ind in offinds]])
+        signals = list()
+        for start, end, offset in zip(starts, ends, offsets):
+            times, vals = self[start:end]
+            signals.append(Signal(times-offset, vals))
+        return signals
+
+    def equals(self, other):
+        """Returns True if two signals are equal, and False if not.
+        Does not return an element-wise comparision of two signals as __eq__
+        does."""
+        try:
+            other = Signal(other)
+        except AttributeError:
+            return False
+        try:
+            res = self == other
+        except (TimeValueVectorsNotEqualLengthError,
+                TimeVectorsNotEqualError):
+            return False
+        return all(res.vals)
+
     def integrate(self, int_constant=0):
         """Integrates the signal and returns the integral as a new signal."""
         energies = np.cumsum(self.vals*self.dtimes) + int_constant
@@ -184,7 +216,10 @@ class Signal:
             raise TimeValueVectorsNotEqualLengthError
 
     def _is_same_time(self, other):
-        return all([a == b for a, b in zip(self.times, other.times)])
+        if len(self) == len(other):
+            return all([a == b for a, b in zip(self.times, other.times)])
+        else:
+            return False
 
     def __getitem__(self, item):
         return self.times[item], self.vals[item]
