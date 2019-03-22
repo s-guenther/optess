@@ -172,7 +172,10 @@ class Signal:
     def pplot(self, plotfcn='step', ax=None, **kwargs):
         ax = ax if ax else make_empty_axes()
         pltfcn = getattr(ax, plotfcn)
-        pltfcn(*self[:], **kwargs)
+        times, vals = self[:]
+        times = np.insert(times, 0, 0)
+        vals = np.insert(vals, 0, vals[0])
+        pltfcn(times, vals, **kwargs)
         plt.draw()
 
     def pprint(self):
