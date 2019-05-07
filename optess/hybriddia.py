@@ -15,7 +15,7 @@ import copy
 from .optimize_ess import OptimizeSingleESS, OptimizeHybridESS
 from .signal import Signal
 from .storage import Storage
-from .objective import Objective, Solver
+from .target import Target, Solver
 from .results import ReducedHybridResults, ReducedSingleResults, \
                      single_to_base_results, single_to_peak_results
 from .torque import Torque
@@ -63,7 +63,7 @@ class HybridDia:
                  name=None, save_opt_results=True):
         self.signal = Signal(signal)
         self.storage = Storage(singlestorage)
-        self.objective = Objective(objective)
+        self.objective = Target(objective)
         self.solver = Solver(solver)
         self._save_opt_results = save_opt_results
 

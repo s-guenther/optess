@@ -11,7 +11,7 @@ sig = oe.DataFactory.freq(256, mu=0.5, time=20, seed=314159)
 # sdia.compute_parallel()
 
 objval = 11.578
-obj = oe.Objective('energy', objval)
+obj = oe.Target('energy', objval)
 storval = 2.25
 stor = oe.Storage(storval, 0.95, 50)
 

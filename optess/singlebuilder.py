@@ -6,7 +6,7 @@ import pyomo.environ as pe
 from copy import deepcopy
 
 from .signal import Signal
-from .objective import Objective
+from .target import Target
 from .storage import Storage
 
 
@@ -28,7 +28,7 @@ class SingleBuilder:
                         name='Single ESS Model, 1st Dimensioning Stage'):
         self.signal = Signal(signal)
         self.storage = Storage(storage)
-        self.objective = Objective(objective)
+        self.objective = Target(objective)
 
         self.model = pe.ConcreteModel(name)
 

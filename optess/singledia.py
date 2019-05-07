@@ -14,11 +14,11 @@ import pickle
 from .optimize_ess import OptimizeSingleESS
 from .signal import Signal
 from .storage import Storage
-from .objective import Objective, Solver
+from .target import Target, Solver
 from .results import NoResults
 
 
-EXACT = Objective('exact', 0)
+EXACT = Target('exact', 0)
 
 StoragePara = namedtuple('StoragePara', 'efficiency self_discharge '
                                         'dis_ch_ratio')
@@ -64,7 +64,7 @@ class SingleDia:
         return 1 - (absobj - emin)/(esupply - emin)
 
     def calculate_point(self, storage, objval):
-        objective = Objective('energy', objval)
+        objective = Target('energy', objval)
         optsingle = OptimizeSingleESS(self.signal, storage, objective,
                                       self.solver)
         optsingle.solve_pyomo_model()

@@ -2,25 +2,29 @@
 
 from collections import namedtuple
 from overload import overload
+from warnings import warn
 
 
-_Power = namedtuple('_Power', 'min max')
-_Efficiency = namedtuple('_Efficiency', 'charge discharge')
+Power = namedtuple('Power', 'min max')
+Efficiency = namedtuple('Efficiency', 'charge discharge')
 
 
 class Storage:
     @overload
-    def __init__(self, power, efficiency, selfdischarge):
+    def __init__(self, power, energy, efficiency, selfdischarge):
         self._power = None
+        self._energy = None
         self._efficiency = None
         self._selfdischarge = None
         self.power = power
+        self.energy = energy
         self.efficiency = efficiency
         self.selfdischarge = selfdischarge
 
     @__init__.add
     def __init__(self, storage):
-        self.__init__(storage.power, storage.efficiency, storage.selfdischarge)
+        self.__init__(storage.power, storage.energy, storage.efficiency,
+                      storage.selfdischarge)
 
     @property
     def power(self):
@@ -29,11 +33,19 @@ class Storage:
     @power.setter
     def power(self, value):
         try:
-            self._power = _Power(-float(value), float(value))
+            self._power = Power(-float(value), float(value))
         except TypeError:
-            self._power = _Power(float(value[0]), float(value[1]))
+            self._power = Power(float(value[0]), float(value[1]))
         if self._power.min > self._power.max:
             raise ValueError('Min power lower max power')
+
+    @property
+    def energy(self):
+        return self._energy
+
+    @energy.setter
+    def energy(self, value):
+        self._energy = float(value)
 
     @property
     def efficiency(self):
@@ -42,9 +54,9 @@ class Storage:
     @efficiency.setter
     def efficiency(self, value):
         try:
-            self._efficiency = _Efficiency(float(value), float(value))
+            self._efficiency = Efficiency(float(value), float(value))
         except TypeError:
-            self._efficiency = _Efficiency(float(value[0]), float(value[1]))
+            self._efficiency = Efficiency(float(value[0]), float(value[1]))
         if any(val <= 0 for val in self._efficiency):
             raise ValueError('Efficiency must be greater than zero')
 
@@ -65,36 +77,50 @@ class Storage:
         pass
 
     def __repr__(self):
-        strfmt = '<{cls}(Power({pwr.min}, {pwr.max}), ' \
-                 'Efficiency({eff.charge}, {eff.discharge}), {selfdis})>'
+        strfmt = '<{cls}(power=({pwr.min}, {pwr.max}), ' \
+                 'energy={enrgy}, ' \
+                 'efficiency=({eff.charge}, {eff.discharge}), ' \
+                 'selfdischarge={selfdis})>'
         fields = dict(cls=self.__class__.__name__,
                       pwr=self.power,
+                      enrgy=self.energy,
                       eff=self.efficiency,
                       selfdis=self.selfdischarge)
         return strfmt.format(**fields)
 
     def __mul__(self, other):
-        """Lets a storage get multiplied by a scalar to scale the power"""
+        """Lets a storage get multiplied by a scalar to scale the power and
+        Energy"""
         factor = float(other)
         return Storage([self.power.min*factor, self.power.max*factor],
+                       [self.energy.min*factor, self.energy.max*factor],
                        self.efficiency, self.selfdischarge)
 
     def __rmul__(self, other):
         return self.__mul__(other)
 
 
-class FullStorage(Storage):
-    def __init__(self, energy, power, efficiency, selfdischarge):
-        super().__init__(power, efficiency, selfdischarge)
-        self.energy = float(energy)
+class IdealStorage(Storage):
+    def __init__(self, power, energy, efficiency=None, selfdischarge=None):
+        if efficiency is not None or selfdischarge is not None:
+            warn('An ideal storage does not have any losses, ignoring '
+                 'efficiency and self discharge values.')
+        efficiency = 1
+        selfdischarge = 1e99
+        super().__init__(power, energy, efficiency, selfdischarge)
 
     def __repr__(self):
-        strfmt = '<{cls}(Power({pwr.min}, {pwr.max}), {energy}, ' \
-                 'Efficiency({eff.charge}, {eff.discharge}), {selfdis})>'
+        strfmt = '<{cls}(power=({pwr.min}, {pwr.max}), ' \
+                 'energy={enrgy})>'
         fields = dict(cls=self.__class__.__name__,
                       pwr=self.power,
-                      energy=self.energy,
-                      eff=self.efficiency,
-                      selfdis=self.selfdischarge)
+                      enrgy=self.energy)
         return strfmt.format(**fields)
-    # TODO add special functions
+
+    def __mul__(self, other):
+        """Lets a storage get multiplied by a scalar to scale the power and
+        Energy"""
+        factor = float(other)
+        # noinspection PyTypeChecker
+        return IdealStorage([self.power.min*factor, self.power.max*factor],
+                            [self.energy.min*factor, self.energy.max*factor])

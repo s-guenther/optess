@@ -22,7 +22,7 @@ for npoints in pointslist:
     peakcut = (pmax - pmin)*0.4 + pmin
     storagepower = pmax - peakcut
 
-    objective = oe.Objective('power', peakcut)
+    objective = oe.Target('power', peakcut)
     storage = oe.Storage(storagepower, 0.95, 1e7)
 
     name = 'signal_{}'.format(npoints)

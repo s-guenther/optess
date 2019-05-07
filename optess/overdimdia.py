@@ -7,7 +7,7 @@ from tqdm import tqdm
 from matplotlib import pyplot as plt
 
 from .signal import Signal
-from .objective import Objective, Solver, Strategy
+from .target import Target, Solver, Strategy
 from .storage import FullStorage
 from .optimize_ess import OptimizeHybridESS
 from .results import ReducedHybridResults
@@ -34,7 +34,7 @@ class AbstractOverdimDia(ABC):
                  save_opt_results=True):
         self.signal = Signal(signal)
         self.single = singlestor
-        self.objective = Objective(objective)
+        self.objective = Target(objective)
         self.solver = Solver(solver)
         self.strategy = Strategy(strategy)
         self.name = name

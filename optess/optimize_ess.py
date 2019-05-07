@@ -8,7 +8,7 @@ import pickle
 
 from .hybridbuilder import HybridBuilder
 from .singlebuilder import SingleBuilder
-from .objective import Objective, Solver, Strategy
+from .target import Target, Solver, Strategy
 from .results import SingleResults, HybridResults, NoResults
 from .signal import Signal
 from .storage import Storage
@@ -78,7 +78,7 @@ class AbstractOptimizeESS(ABC):
     @objective.setter
     def objective(self, val):
         # noinspection PyArgumentList
-        self._objective = Objective(val)
+        self._objective = Target(val)
         self._modified()
 
     @property

@@ -53,7 +53,7 @@ postprocessing.
 An optimization setting is defined by:
 - a load profile (`class Signal`)
 - one or two storages (`class Storage`)
-- an optimization aim (`class Objective`)
+- an optimization aim (`class Target`)
 - in case of HESS: a strategy or boundary for control (`class Strategy`)
 - A solver (`class Solver`)
 
@@ -128,7 +128,7 @@ Todo
 - Fill Error Classes with code
 - Debug HybridBuilder
 - Validity Checking for PyomoResult
-- Objective.validate(Signal)
+- Target.validate(Signal)
 
 License
 -------

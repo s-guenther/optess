@@ -5,7 +5,7 @@ Its related to building the pyomo model for HESS"""
 import pyomo.environ as pe
 from copy import deepcopy
 
-from .objective import Objective, Strategy
+from .target import Target, Strategy
 from .signal import Signal
 from .storage import Storage
 
@@ -32,7 +32,7 @@ class HybridBuilder:
         self.signal = Signal(signal)
         self.base = Storage(base)
         self.peak = Storage(peak)
-        self.objective = Objective(objective)
+        self.objective = Target(objective)
         self.strategy = Strategy(strategy)
 
         if singleenergy is None:

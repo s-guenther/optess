@@ -18,7 +18,7 @@ freqs = [3, 10, 50]
 ampl = [0.3, 2]
 
 peakcut = 41
-objective = oe.Objective('power', peakcut)
+objective = oe.Target('power', peakcut)
 
 for seed, noise in itertools.product(seeds, noises):
     print('-----  Calculating seed={}, noise={}   -----'.format(seed, noise))

@@ -6,7 +6,7 @@ from .hybriddia import HybridDia
 from .overdimdia import OverdimDia
 from .factories import DataFactory, StorageFactory, ObjectiveFactory, \
                        SingleSetupFactory, HybridSetupFactory
-from .objective import Objective
+from .target import Target
 from .storage import Storage
 from .signal import Signal
 from .signalanalysis import FFT, PEHMap

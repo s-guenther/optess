@@ -9,7 +9,7 @@ import timeit
 import optess as oe
 
 peakcut = 3
-objective = oe.Objective('power', peakcut)
+objective = oe.Target('power', peakcut)
 for npoints in [44, 66, 88, 110, 220, 440]:
     name = 'std_{}'.format(npoints)
     signal = oe.DataFactory.std(npoints)

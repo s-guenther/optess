@@ -8,7 +8,7 @@ from collections import namedtuple
 
 from .signal import Signal
 from .storage import Storage
-from .objective import Objective
+from .target import Target
 
 
 class FilterBandwidthExceedsSamplingBandwidthError(ValueError):
@@ -236,7 +236,7 @@ class ObjectiveFactory:
     """
     @staticmethod
     def std03():
-        return Objective('power', 3)
+        return Target('power', 3)
 
 
 class HybridSetupFactory:
