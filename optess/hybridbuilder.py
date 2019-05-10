@@ -83,17 +83,21 @@ class HybridBuilder:
         self.model_2nd.con_lock_peakenergy_capacity = \
             pe.Constraint(expr=model.peakenergycapacity == peakenergy)
 
-        # Add quadratic minimizing expression
+        # Add quadratic minimizing expression TODO No quadratic in here
         model.interplus = pe.Var(model.ind, bounds=(0, None))
         model.interminus = pe.Var(model.ind, bounds=(None, 0))
 
+        # TODO FIXME WHY IS THIS HERE ???
         model.con_lockinter = pe.Constraint(model.ind, rule=_lock_inter)
 
         # Define a monotonically incrasing vector which will be multiplied
         # with interminus. This way, interstorage power flow becomes
         # determined and unambiguous (hopefully)
+        # TODO FIXME do I want this ???
         monoinc = [(model.ind.last() + ii) for ii in model.ind]
 
+        # TODO Multiplier does not have any effect
+        # TODO Why Is peak also minimized for cycles ???
         model.objexpr = sum((-model.baseminus[ii]
                              + (model.interplus[ii] -
                                 model.interminus[ii])
