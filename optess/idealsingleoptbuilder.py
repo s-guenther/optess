@@ -4,15 +4,23 @@ optimization model of a single storage without losses in various flavours.
 It is used by the single storage optimization class through composition."""
 
 import pyomo.environ as pe
-from typing import AnyStr
+from typing import Tuple, Optional
 from datetime import datetime
 from warnings import warn
+from numbers import Real
 
 from .signal import Signal
-from .target import Target, Objective, ObjectiveError, TargetError
+from .target import Target, TargetError
 from .target import TEXACT, TPOWER, TAPPROX, TENERGY
-from .target import MIN_E, MIN_P, MIN_T
 from .storage import IdealStorage
+
+# Class defines program logic, functions provide interface to pyomo
+
+
+_NOT_ALL_DEF_ERR_MSG = \
+    'Inputs storage and target must be completely defined - ' \
+    'storage.energy, storage.power, target.val must not be ' \
+    'None (except for target.type is \'exact\').'
 
 
 class InconsistentInputError(ValueError):
@@ -24,7 +32,7 @@ class IdealSingleOptBuilder:
     flavours of a model of a single storage optimization with an ideal
     storage. This is a special case of SingleOptBuilder with better
     performance for ideal storages."""
-    def __init__(self, signal: Signal, name: AnyStr = None):
+    def __init__(self, signal: Signal, name: Optional[str] = None):
         """"""
         self.signal = signal
 
@@ -36,151 +44,166 @@ class IdealSingleOptBuilder:
 
         self._storage = None
         self._target = None
-        self._objective = None
         self._model = None
 
-    def _clear_protected(self):
-        self._storage = None
-        self._target = None
-        self._objective = None
-        self._model = None
+    def min_energy(self, storage: IdealStorage, target: Target,
+                   max_cycles: Optional[Real] = None,
+                   max_ramp: Optional[Real, Tuple[Real, Real]] = None,
+                   nametag: str = 'Minimize-Energy'):
+        # Check input
+        [is_e, is_p, is_t] = self._get_defined_state(storage, target)
+        if not (is_p and is_t):
+            msg = 'You have to define storage.power and target.val for ' \
+                  'Objective \'min_energy\'.'
+            raise InconsistentInputError(msg)
+        if is_e:
+            warn('Storage object is overdefined. '
+                 'Ignoring storage.energy parameter.')
 
-    def build_stage_1(self, storage: IdealStorage, target: Target,
-                      objective: Objective):
-        """First stage minimizes the objective, neglecting cycles and
-        dynamic stress. Make sure the definition of storage and target is
-        consistent and only two of 3 parameters (storage.power,
-        storage.energy, target.val) are defined (leave one empty with
-        'None')."""
-        self._check_2_of_3_defined(storage, target, objective)
-        self._clear_protected()
+        self._reset_model(storage, target, nametag)
+        self._build_common_model(max_cycles, max_ramp)
 
-        self._storage = storage
-        self._target = target
-        self._objective = objective
-        self._model = pe.ConcreteModel(name='Model-1st-stage-' + self.name)
-
-        self._initialize_model()
-        self._add_common_vars()
-        self._add_common_constraints()
-        self._add_target()
-        self._add_objective()
+        _fix_power(self._model)
+        _fix_target(self._model)
+        _min_energy_obj(self._model)
 
         return self._model
 
-    def build_stage_2(self, storage: IdealStorage, target: Target):
-        """Second stage minimizes cycles, neglecting dynamic stress. It
-        expects that the model was solved before with stage 1 and the
-        minimized objective is known and passed (But you can omit the
-        first stage if you already know the minimized objective from other
-        considerations or you are not interested in minimizing it before).
-        Make sure that storage and target are fully defined."""
-        self._check_all_defined(storage, target)
-        self._clear_protected()
+    def min_power(self, storage: IdealStorage, target: Target,
+                  max_cycles: Optional[Real] = None,
+                  max_ramp: Optional[Real, Tuple[Real, Real]] = None,
+                  nametag: str = 'Minimize-Power'):
+        # TODO optional argument is_cyclic for all objectives
+        # Check input
+        [is_e, is_p, is_t] = self._get_defined_state(storage, target)
+        if not (is_e and is_t):
+            msg = 'You have to define storage.energy and target.val for ' \
+                  'Objective \'min_power\'.'
+            raise InconsistentInputError(msg)
+        if is_p:
+            warn('Storage object is overdefined. '
+                 'Ignoring storage.power parameter.')
 
-    def build_stage_3(self, storage: IdealStorage, target: Target,
-                      cycles=None):
-        """Third stage minimizes the dynamic stress. It expects that the
-        model was solved before with stage 1 and the minimized objective is
-        known and passed and with stage two and the minimized cycles are
-        passed. But you can omit the first stage if you are not interested
-        in minimizing the objective before or already know it from other
-        calculations and you can also omit the second stage if you are not
-        interested in minimizing the cycles before."""
-        self._check_all_defined(storage, target)
-        self._clear_protected()
+        self._reset_model(storage, target, nametag)
+        self._build_common_model(max_cycles, max_ramp)
 
-    def build(self, *args, **kwargs):
-        """Alias for build_stage_1"""
-        return self.build_stage_1(*args, **kwargs)
+        _fix_energy(self._model)
+        _fix_target(self._model)
+        _min_power_obj(self._model)
 
-    def build_stage_minimize_cycles(self, *args, **kwargs):
-        """Alias for build_stage_2"""
-        return self.build_stage_2(*args, **kwargs)
+    def min_target(self, storage: IdealStorage, target: Target,
+                   max_cycles: Optional[Real] = None,
+                   max_ramp: Optional[Real, Tuple[Real, Real]] = None,
+                   nametag='Minimize-Target'):
+        # Check input
+        [is_e, is_p, is_t] = self._get_defined_state(storage, target)
+        if not (is_e and is_p):
+            msg = 'You have to define storage.energy and storage.power for ' \
+                  'Objective \'min_target\'.'
+            raise InconsistentInputError(msg)
+        if is_t and target.type is not TEXACT:
+            warn('Target object is overdefined. '
+                 'Ignoring target.val parameter.')
 
-    def build_stage_minimize_dynamics(self, *args, **kwargs):
-        """Alias for build_stage_3"""
-        return self.build_stage_3(*args, **kwargs)
+        self._reset_model(storage, target, nametag)
+        self._build_common_model(max_cycles, max_ramp)
+
+        _fix_energy(self._model)
+        _fix_power(self._model)
+        _min_target_obj(self._model)
+
+    def min_cycles(self, storage: IdealStorage, target: Target,
+                   max_ramp: Optional[Real, Tuple[Real, Real]] = None,
+                   nametag: str = 'Minimize-Cycles'):
+        self._verify_complete_input(storage, target)
+
+        self._reset_model(storage, target, nametag)
+        self._build_common_model(max_ramp=max_ramp)
+
+        _fix_all(self._model)
+        if not hasattr(self._model, 'powerplus'):
+            _split_power(self._model)
+        _min_cycles_obj(self._model)
+
+    def min_ramp(self, storage: IdealStorage, target: Target,
+                 max_cycles: Optional[Real] = None,
+                 ramp_disch_ch_factor: Real = 1,
+                 nametag: str = 'Minimize-Ramp'):
+        self._verify_complete_input(storage, target)
+
+        self._reset_model(storage, target, nametag)
+        self._build_common_model(max_cycles=max_cycles)
+
+        _fix_all(self._model)
+        _min_ramp_obj(self._model, ramp_disch_ch_factor)
+
+    def min_avg_dynamics(self, storage: IdealStorage, target: Target,
+                         max_cycles: Optional[Real] = None,
+                         max_ramp: Optional[Real, Tuple[Real, Real]] = None,
+                         nametag: str = 'Minimize-Average-Dynamics'):
+        self._verify_complete_input(storage, target)
+
+        self._reset_model(storage, target, nametag)
+        self._build_common_model(max_cycles, max_ramp)
+
+        _fix_all(self._model)
+        _min_avg_dyn_obj(self._model)
+
+    def min_dynamics(self, storage: IdealStorage, target: Target,
+                     max_cycles: Optional[Real] = None,
+                     max_ramp: Optional[Real, Tuple[Real, Real]] = None,
+                     ramp_disch_ch_factor: Real = 1,
+                     nametag: str = 'Minimize-Dynamics'):
+        self._verify_complete_input(storage, target)
+
+        self._reset_model(storage, target, nametag)
+        self._build_common_model(max_cycles, max_ramp)
+
+        _fix_all(self._model)
+        _min_dynamics_obj(self._model, ramp_disch_ch_factor)
+
+        # Build model
+
+    def _reset_model(self, storage, target, name=''):
+        self._storage = storage
+        self._target = target
+        self._model = pe.ConcreteModel(name=name + '-' + self.name)
+
+    def _build_common_model(self, max_cycles=None, max_ramp=None):
+        self._initialize_model()
+        self._add_common_vars()
+        self._add_common_constraints()
+        # Add target performs different operations depending on target type
+        self._add_target()
+        # max_cycles and max_ramp constraint is not reasonable for all
+        # objectives, therefore, each objective must choose if it wants to
+        # set these constraints by passing the constraint values or leaving
+        # it as None
+        if max_cycles:
+            self._add_cycle_constraint(max_cycles)
+        if max_ramp:
+            self._add_ramp_constraint(max_ramp)
 
     @staticmethod
     def _get_defined_state(storage, target):
+        """Check if Energy, Power, TargetVal is existent and return boolean
+        array [is_e, is_p, is_t]"""
         is_e = bool(storage.energy)
         is_p = bool(storage.power)
         is_t = bool(target.val) or target.type is TEXACT
-        is_all = all([is_e, is_p, is_t])
-        return is_e, is_p, is_t, is_all
+        return is_e, is_p, is_t
 
-    @classmethod
-    def _check_all_defined(cls, storage, target):
-        all_defined = cls._get_defined_state(storage, target)[3]
-        if not all_defined:
-            msg = 'Inputs storage and target must be completely defined - ' \
-                  'storage.energy, storage.power, target.val must not be ' \
-                  'None (except for target.type is \'exact\').'
-            raise InconsistentInputError(msg)
-        return None
-
-    @classmethod
-    def _check_2_of_3_defined(cls, storage, target, objective):
-        """Checks the input definitions of storage, target and objective and
-        throw warnings if overdefined and errors if ill
-        defined/underdefined."""
-        is_e, is_p, is_t, is_all = cls._get_defined_state(storage, target)
-
-        if objective is Objective.min_e:
-            if is_all:
-                warn('Model inputs are overdefined but consistent. Ignoring '
-                     'storage.energy parameter.')
-            elif is_t and is_p:
-                pass
-            else:
-                msg = 'You have to define storage.power and target.val for ' \
-                      'Objective \'min_e\'.'
-                raise InconsistentInputError(msg)
-        elif objective is Objective.min_p:
-            if is_all:
-                warn('Model inputs are overdefined but consistent. Ignoring '
-                     'storage.power parameter.')
-            elif is_t and is_e:
-                pass
-            else:
-                msg = 'You have to define storage.energy and target.val for ' \
-                      'Objective \'min_p\'.'
-                raise InconsistentInputError(msg)
-        elif objective is Objective.min_z:
-            if target.type is not TEXACT:
-                if is_all:
-                    warn('Model inputs are overdefined but consistent. '
-                         'Ignoring target.val parameter.')
-                elif is_p and is_e:
-                    pass
-                else:
-                    msg = 'You have to define storage.energy and ' \
-                          'storage.power for Objective \'min_z\'.'
-                    raise InconsistentInputError(msg)
-            else:
-                if is_p and is_e:
-                    warn('Model inputs are overdefined but consistent. For '
-                         'Target type \'exact\' you only have to define one '
-                         'storage parameter. Ignoring storage.energy '
-                         'parameter.')
-                elif is_p or is_e:
-                    pass
-                else:
-                    msg = 'You have to define storage.energy or ' \
-                          'storage.power for Objective \'min_z\' and ' \
-                          'Target \'exact\'.'
-                    raise InconsistentInputError(msg)
-        else:
-            raise ObjectiveError('Unknown Objective {}'.format(objective))
-        return None
+    def _verify_complete_input(self, storage, target):
+        """Raises an error InconsistentInputError if input is incomplete."""
+        is_all_def = all(self._get_defined_state(storage, target))
+        if not is_all_def:
+            raise InconsistentInputError(_NOT_ALL_DEF_ERR_MSG)
 
     def _initialize_model(self):
         model = self._model
         model._signal = self.signal
         model._storage = self._storage
         model._target = self._target
-        model._objective = self._objective
 
         _initialize_model(self._model)
 
@@ -214,17 +237,17 @@ class IdealSingleOptBuilder:
         else:
             raise TargetError('Unknown Target {}'.format(self._target))
 
-    def _add_objective(self):
-        """This may also add some bounds or constraints to variables."""
-        objective = self._objective
-        if objective is MIN_E:
-            _min_energy_obj(self._model)
-        elif objective is MIN_P:
-            _min_power_obj(self._model)
-        elif objective is MIN_T:
-            _min_target_obj(self._model)
-        else:
-            raise ObjectiveError('Unknown Objective {}'.format(objective))
+    def _add_cycle_constraint(self, max_cycles):
+        if not hasattr(self._model, 'powerplus'):
+            _split_power(self._model)
+        _max_cycle_constraint(self._model, max_cycles)
+
+    def _add_ramp_constraint(self, max_ramp):
+        if not isinstance(max_ramp, tuple):
+            max_ramp = [-max_ramp, max_ramp]
+        if max_ramp[0] >= 0:
+            raise ValueError('First max_ramp parameter must be negative.')
+        _max_ramp_constraint(self._model, max_ramp)
 
 
 # ###
@@ -241,7 +264,7 @@ def _initialize_model(model):
     model.objexpr = 0
 
 
-# _add_vars() #################################################################
+# _add_common_vars() ##########################################################
 
 # ### main
 def _power_vars(model):
@@ -270,7 +293,7 @@ def _target_vars(model):
 
 # _add_common_constraints() ###################################################
 
-def __integrate(mod, ii):
+def __rule_integrate(mod, ii):
     # noinspection PyProtectedMember
     dtimes = mod._signal.dtimes
     if ii is 0:
@@ -284,26 +307,26 @@ def __integrate(mod, ii):
 # ### main
 def _integrate_power_constraint(model):
     """Euler Integration per timestep of power to gain energy"""
-    model.con_integrate = pe.Constraint(model.ind, rule=__integrate)
+    model.con_integrate = pe.Constraint(model.ind, rule=__rule_integrate)
 
 
-def __power_lower_max(mod, ii):
+def __rule_power_lower_max(mod, ii):
     return mod.power[ii] <= mod.powercapplus
 
 
-def __power_higher_min(mod, ii):
+def __rule_power_higher_min(mod, ii):
     return mod.powercapminus <= mod.power[ii]
 
 
 # ### main
 def _power_bound_constraint(model):
     model.con_powerlowermax = \
-        pe.Constraint(model.ind, rule=__power_lower_max)
+        pe.Constraint(model.ind, rule=__rule_power_lower_max)
     model.con_powerhighermin = \
-        pe.Constraint(model.ind, rule=__power_higher_min)
+        pe.Constraint(model.ind, rule=__rule_power_higher_min)
 
 
-def __energy_lower_max(mod, ii):
+def __rule_energy_lower_max(mod, ii):
     return mod.energy[ii] <= mod.energycapacity
 
 
@@ -311,9 +334,60 @@ def __energy_lower_max(mod, ii):
 def _energy_bound_constraint(model):
     """Ensures that energy capacity of storages is not exceeded at all times"""
     model.con_energylowermax = \
-        pe.Constraint(model.ind, rule=__energy_lower_max)
+        pe.Constraint(model.ind, rule=__rule_energy_lower_max)
     model.con_energyinitlowermax = \
         pe.Constraint(expr=(model.energyinit <= model.energycapacity))
+
+
+# _add_cycle_constraint() and _add_ramp_constraint() ##########################
+
+def __rule_split_power(mod, ii):
+    return mod.powerplus[ii] + mod.powerminus[ii] == mod.power[ii]
+
+
+# ### main
+def _split_power(model):
+    # TODO assume that no penalty term is neccessary here in combination
+    #  with model.con_max_cycle --> prove it
+    model.powerplus = pe.Var(model.ind, bounds=(0, None))
+    model.powerminus = pe.Var(model.ind, bounds=(None, 0))
+    model.con_split_power = pe.Constraint(model.ind, rule=__rule_split_power)
+
+
+# ### main
+def _max_cycle_constraint(model, max_cycles):
+    cycle_expr = (sum(-model.powerminus[ii] for ii in model.ind) <=
+                  model.energycapacity*max_cycles)
+    model.con_max_cycle = pe.Constraint(expr=cycle_expr)
+
+
+# noinspection PyProtectedMember
+def __rule_fixed_ramp_plus(mod, ii):
+    if ii == mod.ind.last():
+        if hasattr(mod, 'con_cyclic'):
+            return mod.power[0] - mod.power[ii] <= mod._max_ramp_tuple[1]
+        else:
+            return pe.Constraint.Skip
+    return mod.power[ii+1] - mod.power[ii] <= mod._max_ramp_tuple[0]
+
+
+# noinspection PyProtectedMember
+def __rule_fixed_ramp_minus(mod, ii):
+    if ii == mod.ind.last():
+        if hasattr(mod, 'con_cyclic'):
+            return mod._max_ramp_tuple[0] <= mod.power[0] - mod.power[ii]
+        else:
+            return pe.Constraint.Skip
+    return mod._max_ramp_tuple[0] <= mod.power[ii+1] - mod.power[ii]
+
+
+# ### main
+def _max_ramp_constraint(model, max_ramp_tuple):
+    model._max_ramp_tuple = max_ramp_tuple
+    model.con_fixed_ramp_plus = \
+        pe.Constraint(model.ind, rule=__rule_fixed_ramp_plus)
+    model.con_fixed_ramp_minus = \
+        pe.Constraint(model.ind, rule=__rule_fixed_ramp_minus)
 
 
 # _add_target() ###############################################################
@@ -328,16 +402,14 @@ def _cyclic_constraint(model):
 # ### Target Peak Cutting #####################################
 
 # noinspection PyProtectedMember
-def __cutting_low(mod, ii):
+def __rule_cutting_low(mod, ii):
     signal = mod._signal.vals
-    minpower = mod._target.val[0]
     return signal[ii] + mod.power[ii] >= mod.targetvallow
 
 
 # noinspection PyProtectedMember
-def __cutting_high(mod, ii):
+def __rule_cutting_high(mod, ii):
     signal = mod._signal.vals
-    maxpower = mod._target.val[1]
     return signal[ii] + mod.power[ii] <= mod.targetval
 
 
@@ -346,13 +418,13 @@ def _peak_cutting_target(model):
     """This target will limit the maximum power taken from grid to a certain
     value. Can also limit the maximum power fed into grid or the minimum power
     taken from grid."""
-    model.con_cutting_low = pe.Constraint(model.ind, rule=__cutting_low)
-    model.con_cutting_high = pe.Constraint(model.ind, rule=__cutting_high)
+    model.con_cutting_low = pe.Constraint(model.ind, rule=__rule_cutting_low)
+    model.con_cutting_high = pe.Constraint(model.ind, rule=__rule_cutting_high)
 
 
 # ### Target Energy Reduction/Consumption #####################
 
-def __split_delta(mod, ii):
+def __rule_split_delta(mod, ii):
     # noinspection PyProtectedMember
     signal = mod._signal.vals
     return (signal[ii] + mod.power[ii] ==
@@ -377,16 +449,16 @@ def _energy_consumption_target(model):
     #                      for ii in model.ind)*multiplier
 
     model.con_split_delta = \
-        pe.Constraint(model.ind, rule=__split_delta)
+        pe.Constraint(model.ind, rule=__rule_split_delta)
 
     model.con_limit_energy = \
         pe.Constraint(expr=sum(model.deltaplus[ii]*dtimes[ii]
-                               for ii in model.ind) <= model.targetval)
+                               for ii in model.ind) <= maxenergy)
 
 
 # ### Target Follow Exact #####################################
 
-def __follow_exact(mod, ii):
+def __rule_follow_exact(mod, ii):
     # noinspection PyProtectedMember
     signal = mod._signal.vals
     return signal[ii] + mod.power[ii] == 0
@@ -394,7 +466,7 @@ def __follow_exact(mod, ii):
 
 # ### main
 def _exact_target(model):
-    model.con_exact = pe.Constraint(model.ind, rule=__follow_exact)
+    model.con_exact = pe.Constraint(model.ind, rule=__rule_follow_exact)
 
 
 # ### Target Follow Semiexact/Approximately ##################
@@ -404,8 +476,8 @@ def _approximate_target(model):
     """This is equal to _exact_target() in the formulation, but not in the
     intention. Also for target approximately, no cyclic constraint is
     applied."""
-    model.con_approx_low = pe.Constraint(model.ind, rule=__cutting_low)
-    model.con_approx_high = pe.Constraint(model.ind, rule=__cutting_high)
+    model.con_approx_low = pe.Constraint(model.ind, rule=__rule_cutting_low)
+    model.con_approx_high = pe.Constraint(model.ind, rule=__rule_cutting_high)
 
 
 # _add_objective() ############################################################
@@ -434,13 +506,17 @@ def _fix_energy(model):
     model.energycapacity.fix(model._storage.energy)
 
 
+def _fix_all(model):
+    _fix_target(model)
+    _fix_power(model)
+    _fix_energy(model)
+
+
 # ### Objective Minimize Energy ##############################
 
 # ### main
 # noinspection PyProtectedMember
 def _min_energy_obj(model):
-    _fix_power(model)
-    _fix_target(model)
     model.objexpr += model.energycapacity
     model.obj = pe.Objective(expr=model.objexpr)
 
@@ -449,8 +525,6 @@ def _min_energy_obj(model):
 
 # ### main
 def _min_power_obj(model):
-    _fix_energy(model)
-    _fix_target(model)
     model.objexpr += model.powercapplus - model.powercapminus
     model.obj = pe.Objective(expr=model.objexpr)
 
@@ -460,8 +534,6 @@ def _min_power_obj(model):
 # ### main
 # noinspection PyProtectedMember
 def _min_target_obj(model):
-    _fix_energy(model)
-    _fix_power(model)
     model.objexpr += model.targetval
     if model._target.type is TEXACT:
         _fix_target(model)
@@ -477,3 +549,81 @@ def _min_target_obj(model):
     model.objexpr += model.targetval
     model.obj = pe.Objective(expr=model.objexpr)
 
+
+# ### Objective Minimize Cycles
+
+# ### main
+def _min_cycles_obj(model):
+    model.objexpr += sum(-model.powerminus[ii] for ii in model.ind)
+    model.obj = pe.Objective(expr=model.objexpr)
+
+
+# ### Objective Minimize Ramp
+
+def __rule_ramp_plus(mod, ii):
+    if ii == mod.ind.last():
+        if hasattr(mod, 'con_cyclic'):
+            return mod.power[0] - mod.power[ii] <= mod.max_ramp
+        else:
+            return pe.Constraint.Skip
+    return mod.power[ii+1] - mod.power[ii] <= mod.max_ramp
+
+
+# noinspection PyProtectedMember
+def __rule_ramp_minus(mod, ii):
+    if ii == mod.ind.last():
+        if hasattr(mod, 'con_cyclic'):
+            return -mod.max_ramp*mod._ramp_factor <= mod.power[0] - \
+                   mod.power[ii]
+        else:
+            return pe.Constraint.Skip
+    return -mod.max_ramp*mod._ramp_factor <= mod.power[ii+1] - mod.power[ii]
+
+
+# ### main
+def _min_ramp_obj(model, ramp_disch_ch_factor, weight=1):
+    model.max_ramp = pe.Var()
+    model._ramp_factor = ramp_disch_ch_factor
+    model.con_ramp_plus = pe.Expression(model.ind, rule=__rule_ramp_plus)
+    model.con_ramp_minus = pe.Expression(model.ind, rule=__rule_ramp_minus)
+    # noinspection PyTypeChecker
+    model.objexpr += weight*model.max_ramp
+    model.obj = pe.Objective(expr=model.objexpr)
+
+
+# ### Objective Minimize Average Dynamics
+
+def __rule_powerdiff(mod, ii):
+    if ii == mod.ind.last():
+        return mod.powerdiff[ii] == mod.power[0] - mod.power[ii]
+    return mod.powerdiff[ii] == mod.power[ii+1] - mod.power[ii]
+
+
+def __rule_split_powerdiff(mod, ii):
+    return mod.powerdiff[ii] == mod.powerdiffplus[ii] + mod.powerdiffminus[ii]
+
+
+# ### main
+def _min_avg_dyn_obj(model, weight=1):
+    model.powerdiff = pe.Var(model.ind)
+    model.powerdiffplus = pe.Var(model.ind)
+    model.powerdiffminus = pe.Var(model.ind)
+    model.con_powerdiff = \
+        pe.Constraint(model.ind, rule=__rule_powerdiff)
+    model.con_powerdiffsplit = \
+        pe.Constraint(model.ind, rule=__rule_split_powerdiff)
+    model.objexpr += weight*sum(model.powerdiffplus[ii] for ii in model.ind)
+    model.obj = pe.Objective(expr=model.objexpr)
+
+
+# ### Objective Minimize Dynamics
+
+# ### main
+# noinspection PyProtectedMember
+def _min_dynamics_obj(model, ramp_disch_ch_factor, weight=1):
+    sig = model._signal - model._signal.amv
+    w1 = 1
+    w2 = weight/sig.cycles()
+    _min_ramp_obj(model, ramp_disch_ch_factor, weight=w1)
+    model.del_component(model.obj)
+    _min_avg_dyn_obj(model, weight=w2)

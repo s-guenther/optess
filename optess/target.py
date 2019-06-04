@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-from collections import namedtuple
 from enum import Enum
 import numbers
 
@@ -10,22 +9,6 @@ class Solver(Enum):
     # TODO add more solvers
     gurobi = 'gurobi'
     glpk = 'glpk'
-
-
-class ObjectiveError(ValueError):
-    pass
-
-
-class Objective(Enum):
-    """Determine the objective which shall be minimized. """
-    min_e = 'min_e'
-    min_p = 'min_p'
-    min_t = 'min_t'
-
-
-MIN_E = Objective.min_e
-MIN_P = Objective.min_p
-MIN_T = Objective.min_t
 
 
 class TargetType(Enum):
@@ -80,7 +63,7 @@ class Target:
         if self.type is TEXACT and value is not None:
             raise TargetError('TargetType.exact takes no value argument.')
         elif self.type is TENERGY and value is not None:
-            if isinstance(value, numbers.Number):
+            if isinstance(value, numbers.Real):
                 vals = [value, value]
             else:
                 msg = 'TargetType.energy takes exactly one number as value ' \
@@ -88,7 +71,7 @@ class Target:
                 raise TargetError(msg)
         elif ((self.type is TPOWER or self.type is TAPPROX)
               and value is not None):
-            if isinstance(value, numbers.Number):
+            if isinstance(value, numbers.Real):
                 vals = ([-1e99, value] if self.type is TPOWER else
                         [-value, value])
             else:
@@ -99,8 +82,8 @@ class Target:
                       'variable is passed) where v1 <= v2'.format(tstring)
                 try:
                     is_two_numbers = len(value) == 2 and \
-                                     isinstance(value[0], numbers.Number) and \
-                                     isinstance(value[1], numbers.Number)
+                                     isinstance(value[0], numbers.Real) and \
+                                     isinstance(value[1], numbers.Real)
 
                     if is_two_numbers and value[0] <= value[1]:
                         self._val = value[0], value[1]
