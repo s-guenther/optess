@@ -73,7 +73,6 @@ class IdealSingleOptBuilder:
                   max_cycles: Optional[Real] = None,
                   max_ramp: Optional[Real, Tuple[Real, Real]] = None,
                   nametag: str = 'Minimize-Power'):
-        # TODO optional argument is_cyclic for all objectives
         # Check input
         [is_e, is_p, is_t] = self._get_defined_state(storage, target)
         if not (is_e and is_t):
@@ -113,12 +112,13 @@ class IdealSingleOptBuilder:
         _min_target_obj(self._model)
 
     def min_cycles(self, storage: IdealStorage, target: Target,
+                   max_cycles: Optional[Real] = None,
                    max_ramp: Optional[Real, Tuple[Real, Real]] = None,
                    nametag: str = 'Minimize-Cycles'):
         self._verify_complete_input(storage, target)
 
         self._reset_model(storage, target, nametag)
-        self._build_common_model(max_ramp=max_ramp)
+        self._build_common_model(max_cycles, max_ramp)
 
         _fix_all(self._model)
         if not hasattr(self._model, 'powerplus'):
@@ -127,12 +127,13 @@ class IdealSingleOptBuilder:
 
     def min_ramp(self, storage: IdealStorage, target: Target,
                  max_cycles: Optional[Real] = None,
+                 max_ramp: Optional[Real, Tuple[Real, Real]] = None,
                  ramp_disch_ch_factor: Real = 1,
                  nametag: str = 'Minimize-Ramp'):
         self._verify_complete_input(storage, target)
 
         self._reset_model(storage, target, nametag)
-        self._build_common_model(max_cycles=max_cycles)
+        self._build_common_model(max_cycles, max_ramp)
 
         _fix_all(self._model)
         _min_ramp_obj(self._model, ramp_disch_ch_factor)
@@ -226,16 +227,17 @@ class IdealSingleOptBuilder:
         variables to define targets or penalty terms to objective."""
         if self._target.type is TPOWER:
             _peak_cutting_target(self._model)
-            _cyclic_constraint(self._model)
         elif self._target.type is TENERGY:
             _energy_consumption_target(self._model)
-            _cyclic_constraint(self._model)
         elif self._target.type is TEXACT:
             _exact_target(self._model)
         elif self._target.type is TAPPROX:
             _approximate_target(self._model)
         else:
             raise TargetError('Unknown Target {}'.format(self._target))
+
+        if self._target.is_cyclic:
+            _cyclic_constraint(self._model)
 
     def _add_cycle_constraint(self, max_cycles):
         if not hasattr(self._model, 'powerplus'):

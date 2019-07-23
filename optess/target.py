@@ -31,17 +31,28 @@ class TargetError(Exception):
 
 
 class Target:
-    def __init__(self, ttype: TargetType = TEXACT, val=None):
+    def __init__(self, ttype: TargetType = TEXACT, val=None, is_cyclic=None):
         """Depending on Target Type, the val argument must be None,
         a number, or an iterable of two numbers. Internally, this is always
         converted to two numbers in self.vals. Property self.val always
         returns self.vals[1]."""
         self._type = ttype
         self._vals = self._check_val_input(val)
+        if is_cyclic is None:
+            if self._type in [TPOWER, TENERGY]:
+                self._is_cyclic = True
+            else:
+                self._is_cyclic = False
+        else:
+            self._is_cyclic = is_cyclic
 
     @property
     def type(self):
         return self._type
+
+    @property
+    def is_cyclic(self):
+        return self._is_cyclic
 
     @property
     def val(self):
