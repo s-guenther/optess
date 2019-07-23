@@ -606,8 +606,8 @@ def __rule_split_powerdiff(mod, ii):
 # ### main
 def _min_avg_dyn_obj(model, weight=1):
     model.powerdiff = pe.Var(model.ind)
-    model.powerdiffplus = pe.Var(model.ind)
-    model.powerdiffminus = pe.Var(model.ind)
+    model.powerdiffplus = pe.Var(model.ind, bounds=(0, None))
+    model.powerdiffminus = pe.Var(model.ind, bounds=(None, 0))
     model.con_powerdiff = \
         pe.Constraint(model.ind, rule=__rule_powerdiff)
     model.con_powerdiffsplit = \
