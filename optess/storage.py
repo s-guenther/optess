@@ -2,7 +2,6 @@
 
 from collections import namedtuple
 from overload import overload
-from warnings import warn
 
 
 Power = namedtuple('Power', 'min max')
@@ -11,7 +10,11 @@ Efficiency = namedtuple('Efficiency', 'charge discharge')
 
 class Storage:
     @overload
-    def __init__(self, power, energy, efficiency, selfdischarge):
+    def __init__(self, power, energy, efficiency=1, selfdischarge=1e99):
+        """power can be a 2-tuple, defining discharge and charge power,
+        if only one value is provided, they are treated equal (except sign).
+        Standard values of efficiency self discharge rate equal an ideal
+        storage without losses."""
         self._power = None
         self._energy = None
         self._efficiency = None
@@ -36,8 +39,8 @@ class Storage:
             self._power = Power(-float(value), float(value))
         except TypeError:
             self._power = Power(float(value[0]), float(value[1]))
-        if self._power.min > self._power.max:
-            raise ValueError('Min power lower max power')
+        if self._power.min >= self._power.max:
+            raise ValueError('Min power lower or equal max power')
 
     @property
     def energy(self):
@@ -88,39 +91,13 @@ class Storage:
                       selfdis=self.selfdischarge)
         return strfmt.format(**fields)
 
+    # noinspection PyTypeChecker
     def __mul__(self, other):
         """Lets a storage get multiplied by a scalar to scale the power and
         Energy"""
         factor = float(other)
         return Storage([self.power.min*factor, self.power.max*factor],
-                       [self.energy.min*factor, self.energy.max*factor],
-                       self.efficiency, self.selfdischarge)
+                       self.energy*factor, self.efficiency, self.selfdischarge)
 
     def __rmul__(self, other):
         return self.__mul__(other)
-
-
-class IdealStorage(Storage):
-    def __init__(self, power, energy, efficiency=None, selfdischarge=None):
-        if efficiency is not None or selfdischarge is not None:
-            warn('An ideal storage does not have any losses, ignoring '
-                 'efficiency and self discharge values.')
-        efficiency = 1
-        selfdischarge = 1e99
-        super().__init__(power, energy, efficiency, selfdischarge)
-
-    def __repr__(self):
-        strfmt = '<{cls}(power=({pwr.min}, {pwr.max}), ' \
-                 'energy={enrgy})>'
-        fields = dict(cls=self.__class__.__name__,
-                      pwr=self.power,
-                      enrgy=self.energy)
-        return strfmt.format(**fields)
-
-    def __mul__(self, other):
-        """Lets a storage get multiplied by a scalar to scale the power and
-        Energy"""
-        factor = float(other)
-        # noinspection PyTypeChecker
-        return IdealStorage([self.power.min*factor, self.power.max*factor],
-                            [self.energy.min*factor, self.energy.max*factor])

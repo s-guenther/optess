@@ -12,10 +12,13 @@ from numbers import Real
 from .signal import Signal
 from .target import Target, TargetError
 from .target import TEXACT, TPOWER, TAPPROX, TENERGY
-from .storage import IdealStorage
+from .storage import Storage
 
-# Class defines program logic, functions provide interface to pyomo
 
+# Defines the maximum time constant for self discharge, higher values are
+# treated as infinity, i.e. ideal storage without self discharge
+# Built in for numerical stability and better conditioning of matrices
+MAX_TAU = 1e10
 
 _NOT_ALL_DEF_ERR_MSG = \
     'Inputs storage and target must be completely defined - ' \
@@ -27,7 +30,8 @@ class InconsistentInputError(ValueError):
     pass
 
 
-class IdealSingleOptBuilder:
+# Class defines program logic, functions provide interface to pyomo
+class SingleOptBuilder:
     """Builder class which returns an object able to generate various
     flavours of a model of a single storage optimization with an ideal
     storage. This is a special case of SingleOptBuilder with better
@@ -46,7 +50,7 @@ class IdealSingleOptBuilder:
         self._target = None
         self._model = None
 
-    def min_energy(self, storage: IdealStorage, target: Target,
+    def min_energy(self, storage: Storage, target: Target,
                    max_cycles: Optional[Real] = None,
                    max_ramp: Optional[Real, Tuple[Real, Real]] = None,
                    nametag: str = 'Minimize-Energy'):
@@ -69,7 +73,7 @@ class IdealSingleOptBuilder:
 
         return self._model
 
-    def min_power(self, storage: IdealStorage, target: Target,
+    def min_power(self, storage: Storage, target: Target,
                   max_cycles: Optional[Real] = None,
                   max_ramp: Optional[Real, Tuple[Real, Real]] = None,
                   nametag: str = 'Minimize-Power'):
@@ -90,7 +94,7 @@ class IdealSingleOptBuilder:
         _fix_target(self._model)
         _min_power_obj(self._model)
 
-    def min_target(self, storage: IdealStorage, target: Target,
+    def min_target(self, storage: Storage, target: Target,
                    max_cycles: Optional[Real] = None,
                    max_ramp: Optional[Real, Tuple[Real, Real]] = None,
                    nametag='Minimize-Target'):
@@ -111,7 +115,7 @@ class IdealSingleOptBuilder:
         _fix_power(self._model)
         _min_target_obj(self._model)
 
-    def min_cycles(self, storage: IdealStorage, target: Target,
+    def min_cycles(self, storage: Storage, target: Target,
                    max_cycles: Optional[Real] = None,
                    max_ramp: Optional[Real, Tuple[Real, Real]] = None,
                    nametag: str = 'Minimize-Cycles'):
@@ -121,11 +125,9 @@ class IdealSingleOptBuilder:
         self._build_common_model(max_cycles, max_ramp)
 
         _fix_all(self._model)
-        if not hasattr(self._model, 'powerplus'):
-            _split_power(self._model)
         _min_cycles_obj(self._model)
 
-    def min_ramp(self, storage: IdealStorage, target: Target,
+    def min_ramp(self, storage: Storage, target: Target,
                  max_cycles: Optional[Real] = None,
                  max_ramp: Optional[Real, Tuple[Real, Real]] = None,
                  ramp_disch_ch_factor: Real = 1,
@@ -138,7 +140,7 @@ class IdealSingleOptBuilder:
         _fix_all(self._model)
         _min_ramp_obj(self._model, ramp_disch_ch_factor)
 
-    def min_avg_dynamics(self, storage: IdealStorage, target: Target,
+    def min_avg_dynamics(self, storage: Storage, target: Target,
                          max_cycles: Optional[Real] = None,
                          max_ramp: Optional[Real, Tuple[Real, Real]] = None,
                          nametag: str = 'Minimize-Average-Dynamics'):
@@ -150,7 +152,7 @@ class IdealSingleOptBuilder:
         _fix_all(self._model)
         _min_avg_dyn_obj(self._model)
 
-    def min_dynamics(self, storage: IdealStorage, target: Target,
+    def min_dynamics(self, storage: Storage, target: Target,
                      max_cycles: Optional[Real] = None,
                      max_ramp: Optional[Real, Tuple[Real, Real]] = None,
                      ramp_disch_ch_factor: Real = 1,
@@ -240,8 +242,6 @@ class IdealSingleOptBuilder:
             _cyclic_constraint(self._model)
 
     def _add_cycle_constraint(self, max_cycles):
-        if not hasattr(self._model, 'powerplus'):
-            _split_power(self._model)
         _max_cycle_constraint(self._model, max_cycles)
 
     def _add_ramp_constraint(self, max_ramp):
@@ -268,22 +268,38 @@ def _initialize_model(model):
 
 # _add_common_vars() ##########################################################
 
+def __rule_split_power(mod, ii):
+    return mod.powerplus[ii] + mod.powerminus[ii] == mod.power[ii]
+
+
 # ### main
-def _power_vars(model):
-    # power over time
+def _power_vars(model, penaltyfactor=1e-3):
+    # power over time, inner equals the integrated part where losses have
+    # been excluded
     model.power = pe.Var(model.ind)
-    # power capacity positive and negative
+    model.inner = pe.Var(model.ind)
+    # power capacity positive and negative, define as variable as it is not
+    # known for now if it is a constraint/bound or an objective
     model.powercapplus = pe.Var(bounds=(0, None))
     model.powercapminus = pe.Var(bounds=(None, 0))
+    # split power, neccessary for efficiency + and -
+    model.powerplus = pe.Var(model.ind, bounds=(0, None))
+    model.powerminus = pe.Var(model.ind, bounds=(None, 0))
+    model.con_split_power = pe.Constraint(model.ind, rule=__rule_split_power)
+    # penalty term in objective to ensure that one of powerplus and
+    # powerminus is always zero:
+    model.objexpr += sum(model.powerplus[ii] - model.powerminus[ii]
+                         for ii in model.ind)*penaltyfactor
 
 
 # ### main
 def _energy_vars(model):
     # Energy content as function of time
     model.energy = pe.Var(model.ind, bounds=(0, None))
-    # Energy capacity (maximum storable energy)
+    # Energy capacity (maximum storable energy), as variable until it is
+    # known if it is a bound by target or an objective
     model.energycapacity = pe.Var(bounds=(0, None))
-    # Initial condition of base and peak energy content
+    # Initial condition of energy content
     model.energyinit = pe.Var(bounds=(0, None))
 
 
@@ -294,6 +310,19 @@ def _target_vars(model):
 
 
 # _add_common_constraints() ###################################################
+# noinspection PyProtectedMember
+def __losses(mod, ii):
+    eta_ch = mod._storage.efficiency.charge
+    eta_dis = mod._storage.efficiency.discharge
+    tau = mod._storage.selfdischarge
+    selfdis = 1/tau if tau <= MAX_TAU else 0
+
+    eff_power = (mod.powerplus[ii]*eta_ch + mod.powerminus[ii]/eta_dis)
+    lastenergy = mod.energy[ii-1] if ii is not 0 else mod.energyinit
+    dis_power = -lastenergy*selfdis
+
+    return mod.inner[ii] == eff_power + dis_power
+
 
 def __rule_integrate(mod, ii):
     # noinspection PyProtectedMember
@@ -303,7 +332,7 @@ def __rule_integrate(mod, ii):
         lastenergy = mod.energyinit
     else:
         lastenergy = mod.energy[ii - 1]
-    return mod.energy[ii] == lastenergy + mod.power[ii] * dtimes[ii]
+    return mod.energy[ii] == lastenergy + mod.inner[ii] * dtimes[ii]
 
 
 # ### main
@@ -342,19 +371,6 @@ def _energy_bound_constraint(model):
 
 
 # _add_cycle_constraint() and _add_ramp_constraint() ##########################
-
-def __rule_split_power(mod, ii):
-    return mod.powerplus[ii] + mod.powerminus[ii] == mod.power[ii]
-
-
-# ### main
-def _split_power(model):
-    # TODO assume that no penalty term is neccessary here in combination
-    #  with model.con_max_cycle --> prove it
-    model.powerplus = pe.Var(model.ind, bounds=(0, None))
-    model.powerminus = pe.Var(model.ind, bounds=(None, 0))
-    model.con_split_power = pe.Constraint(model.ind, rule=__rule_split_power)
-
 
 # ### main
 def _max_cycle_constraint(model, max_cycles):
