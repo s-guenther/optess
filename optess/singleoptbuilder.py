@@ -74,6 +74,7 @@ class SingleOptBuilder:
         return self._model
 
     def min_power(self, storage: Storage, target: Target,
+                  power_disch_ch_factor: Real = 1,
                   max_cycles: Optional[Real] = None,
                   max_ramp: Optional[Real, Tuple[Real, Real]] = None,
                   nametag: str = 'Minimize-Power'):
@@ -92,7 +93,7 @@ class SingleOptBuilder:
 
         _fix_energy(self._model)
         _fix_target(self._model)
-        _min_power_obj(self._model)
+        _min_power_obj(self._model, power_disch_ch_factor)
 
     def min_target(self, storage: Storage, target: Target,
                    max_cycles: Optional[Real] = None,
@@ -128,9 +129,9 @@ class SingleOptBuilder:
         _min_cycles_obj(self._model)
 
     def min_ramp(self, storage: Storage, target: Target,
+                 ramp_disch_ch_factor: Real = 1,
                  max_cycles: Optional[Real] = None,
                  max_ramp: Optional[Real, Tuple[Real, Real]] = None,
-                 ramp_disch_ch_factor: Real = 1,
                  nametag: str = 'Minimize-Ramp'):
         self._verify_complete_input(storage, target)
 
@@ -153,9 +154,9 @@ class SingleOptBuilder:
         _min_avg_dyn_obj(self._model)
 
     def min_dynamics(self, storage: Storage, target: Target,
+                     ramp_disch_ch_factor: Real = 1,
                      max_cycles: Optional[Real] = None,
                      max_ramp: Optional[Real, Tuple[Real, Real]] = None,
-                     ramp_disch_ch_factor: Real = 1,
                      nametag: str = 'Minimize-Dynamics'):
         self._verify_complete_input(storage, target)
 
@@ -542,7 +543,10 @@ def _min_energy_obj(model):
 # ### Objective Minimize Power ###############################
 
 # ### main
-def _min_power_obj(model):
+def _min_power_obj(model, disch_ch_factor=1):
+    ff = disch_ch_factor
+    model.con_lock_power_cap = \
+        pe.Constraint(expr=(model.powercapplus == model.powercapminus*ff))
     model.objexpr += model.powercapplus - model.powercapminus
     model.obj = pe.Objective(expr=model.objexpr)
 
