@@ -4,6 +4,11 @@ from collections import namedtuple
 from overload import overload
 
 
+# Defines the maximum time constant for self discharge, higher values are
+# treated as infinity, i.e. ideal storage without self discharge
+# Built in for numerical stability and better conditioning of matrices
+MAX_TAU = 1e10
+
 Power = namedtuple('Power', 'min max')
 Efficiency = namedtuple('Efficiency', 'charge discharge')
 
@@ -70,6 +75,12 @@ class Storage:
     @selfdischarge.setter
     def selfdischarge(self, value):
         self._selfdischarge = float(value)
+
+    def is_ideal(self):
+        is_charge_ideal = self.efficiency.charge == 1
+        is_discharge_ideal = self.efficiency.discharge == 1
+        is_selfdis_ideal = self.selfdischarge >= MAX_TAU
+        return is_charge_ideal and is_discharge_ideal and is_selfdis_ideal
 
     def pprint(self):
         # TODO implement

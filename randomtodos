@@ -1,0 +1,26 @@
+- bug in sdia folder gen
+- hash fcn für signal
+
+- grenzen könnte man statt statisch auch dynamisch für jeden Zeitpunkt einzeln
+  festlegen
+- sdia mit hybpotential an paretofronten
+  --> front farblich h=0 --> hell, h=1 --> dunkel
+- paretofronten gestrichelt für vers eta/tau
+- kombiniere targets?: Peakcut + Energy z.B.
+- Target 15min peakcut
+- control bleibt in Matalb, aber: von Python ansteuern --> API
+  Schritt zu real: Verlust beim Zwischenladen
+- Target Peak Power Cut ist boundary (?)
+
+- put signal related code into separate library
+- signal slicing __getitem__ --> times vector mit offset korrigieren
+- factories @ alter signal überarbeiten
+
+- neben capex muss opex geliefert werden, sobald kosten dran geschrieben werden,
+  dies ist möglich sobald technologien festgelegt werden und nicht mehr
+  generisch gerechnet wird (nach ideal hybrid)
+- Loss model back calculation mit quadratischen verlusten
+
+- Target Energie: bessere Fälle suchen, generieren
+
+- Gini Koeffizient, Lorenzkurven, Hyb Diagramm
