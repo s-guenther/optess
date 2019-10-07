@@ -467,7 +467,7 @@ def _power_bound_constraint(model):
 
 
 def __rule_baseenergy_lower_max(mod, ii):
-    return mod.peakenergy[ii] <= mod.baseenergycapacity
+    return mod.baseenergy[ii] <= mod.baseenergycapacity
 
 
 def __rule_peakenergy_lower_max(mod, ii):
@@ -635,13 +635,13 @@ def _allow_inter_power_flow_without_losses(model):
         pe.Constraint(model.ind, rule=__rule_peakinterintegrate)
     # Bounds with inter
     model.con_baselowermax = \
-        pe.Constraint(model.ind, rule=__rule_base_lower_max)
+        pe.Constraint(model.ind, rule=__rule_baseinter_lower_max)
     model.con_basehighermin = \
-        pe.Constraint(model.ind, rule=__rule_base_higher_min)
+        pe.Constraint(model.ind, rule=__rule_baseinter_higher_min)
     model.con_peaklowermax = \
-        pe.Constraint(model.ind, rule=__rule_peak_lower_max)
+        pe.Constraint(model.ind, rule=__rule_peakinter_lower_max)
     model.con_peakhighermin = \
-        pe.Constraint(model.ind, rule=__rule_peak_higher_min)
+        pe.Constraint(model.ind, rule=__rule_peakinter_higher_min)
 
 
 # _add_target() ###############################################################
@@ -649,8 +649,12 @@ def _allow_inter_power_flow_without_losses(model):
 
 # ### main
 def _cyclic_constraint(model):
-    model.con_cyclic = pe.Constraint(expr=(model.energyinit ==
-                                           model.energy[model.ind.last()]))
+    model.con_cyclicbase = \
+        pe.Constraint(expr=(model.baseenergyinit ==
+                            model.baseenergy[model.ind.last()]))
+    model.con_cyclicpeak = \
+        pe.Constraint(expr=(model.peakenergyinit ==
+                            model.peakenergy[model.ind.last()]))
 
 
 # ### Target Peak Cutting #####################################
