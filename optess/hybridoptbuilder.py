@@ -313,11 +313,11 @@ def __rule_split_power(mod, ii):
 
 
 def __rule_split_basepower(mod, ii):
-    return mod.basepowerplus[ii] + mod.basepowerminus[ii] == mod.basepower[ii]
+    return mod.baseplus[ii] + mod.baseminus[ii] == mod.base[ii]
 
 
 def __rule_split_peakpower(mod, ii):
-    return mod.peakpowerplus[ii] + mod.peakpowerminus[ii] == mod.peakpower[ii]
+    return mod.peakplus[ii] + mod.peakminus[ii] == mod.peak[ii]
 
 
 # ### main
@@ -330,6 +330,7 @@ def _power_vars(model, penaltyfactor=1e-3):
     model.inner = pe.Var(model.ind)
     model.baseinner = pe.Var(model.ind)
     model.peakinner = pe.Var(model.ind)
+
     # power capacity positive and negative, define as variable as it is not
     # known for now if it is a constraint/bound or an objective
     model.powercapplus = pe.Var(bounds=(0, None))
@@ -338,6 +339,7 @@ def _power_vars(model, penaltyfactor=1e-3):
     model.powercapminus = pe.Var(bounds=(None, 0))
     model.basecapminus = pe.Var(bounds=(None, 0))
     model.peakcapminus = pe.Var(bounds=(None, 0))
+
     # split power, neccessary for efficiency + and -
     model.powerplus = pe.Var(model.ind, bounds=(0, None))
     model.baseplus = pe.Var(model.ind, bounds=(0, None))
@@ -350,6 +352,7 @@ def _power_vars(model, penaltyfactor=1e-3):
         pe.Constraint(model.ind, rule=__rule_split_power)
     model.con_split_peakpower = \
         pe.Constraint(model.ind, rule=__rule_split_power)
+
     # penalty term in objective to ensure that one of powerplus and
     # powerminus is always zero:
     model.objexpr += sum(model.powerplus[ii] - model.powerminus[ii]
@@ -587,20 +590,24 @@ def _allow_inter_power_flow_with_losses(model):
     pass
 
 
+def __rule_split_interpower(mod, ii):
+    return mod.interplus[ii] + mod.interminus[ii] == mod.inter[ii]
+
+
 def __rule_baseinterintegrate(mod, ii):
     # noinspection PyProtectedMember
     dtimes = mod._signal.dtimes
     lastenergy = mod.baseenergy[ii-1] if ii is not 0 else mod.baseenergyinit
-    return (mod.baseenergy[ii] == lastenergy +
-                                  (mod.baseinner[ii] + mod.inter)*dtimes[ii])
+    return (mod.baseenergy[ii] ==
+            lastenergy + (mod.baseinner[ii] + mod.inter[ii])*dtimes[ii])
 
 
 def __rule_peakinterintegrate(mod, ii):
     # noinspection PyProtectedMember
     dtimes = mod._signal.dtimes
     lastenergy = mod.peakenergy[ii-1] if ii is not 0 else mod.peakenergyinit
-    return (mod.peakenergy[ii] == lastenergy +
-                                  (mod.peakinner[ii] - mod.inter)*dtimes[ii])
+    return (mod.peakenergy[ii] ==
+            lastenergy + (mod.peakinner[ii] - mod.inter[ii])*dtimes[ii])
 
 
 def __rule_baseinter_lower_max(mod, ii):
@@ -620,19 +627,36 @@ def __rule_peakinter_higher_min(mod, ii):
 
 
 # ### main
-def _allow_inter_power_flow_without_losses(model):
+def _allow_inter_power_flow_without_losses(model, penaltyfactor=1e-3,
+                                           bigm=1e3):
     # Prohibit inter power flow with losses
     _prohibit_inter_power_flow(model)
+
     # Allow it through an additional variable
     model.inter = pe.Var(model.ind)
+    model.interplus = pe.Var(model.ind, bounds=(0, None))
+    model.interminus = pe.Var(model.ind, bounds=(None, 0))
+    model.intercapplus = pe.Var(bounds=(0, None))
+    model.intercapminus = pe.Var(bounds=(None, 0))
+
+    # Split and penalize inter
+    model.con_split_interpower = \
+        pe.Constraint(model.ind, rule=__rule_split_interpower)
+    model.objexpr += sum(model.interplus[ii] - model.interminus[ii]
+                         for ii in model.ind)*penaltyfactor
+
+    _lock_base_peak_inter(model, penaltyfactor, bigm)
+
     # Remove old integration constraints
     model.del_component(model.con_baseintegrate)
     model.del_component(model.con_peakintegrate)
+
     # Integrate
     model.con_baseintegrate = \
         pe.Constraint(model.ind, rule=__rule_baseinterintegrate)
     model.con_peakintegrate = \
         pe.Constraint(model.ind, rule=__rule_peakinterintegrate)
+
     # Bounds with inter
     model.con_baselowermax = \
         pe.Constraint(model.ind, rule=__rule_baseinter_lower_max)
@@ -642,6 +666,123 @@ def _allow_inter_power_flow_without_losses(model):
         pe.Constraint(model.ind, rule=__rule_peakinter_lower_max)
     model.con_peakhighermin = \
         pe.Constraint(model.ind, rule=__rule_peakinter_higher_min)
+
+
+# Lock 1
+def __rule_lock_1_1(mod, ii):
+    return (mod.intercapminus + mod.bigm*mod.baseplus[ii] - mod.aux1[ii]
+            - mod.aux2[ii] <= mod.interminus[ii])
+
+
+def __rule_lock_1_2(mod, ii):
+    return -mod.aux1[ii] - mod.aux2[ii] <= mod.interminus[ii]
+
+
+def __rule_lock_1_3(mod, ii):
+    return -mod.intercapminus - mod.bigm*mod.baseplus[ii] <= mod.aux1[ii]
+
+
+def __rule_lock_1_4(mod, ii):
+    return mod.intercapminus + mod.bigm*mod.baseplus[ii] <= mod.aux2[ii]
+
+
+# Lock 2
+def __rule_lock_2_1(mod, ii):
+    return (mod.interplus[ii] <= mod.intercapplus -
+            mod.bigm*mod.peakplus[ii] + mod.aux3[ii] + mod.aux4[ii])
+
+
+def __rule_lock_2_2(mod, ii):
+    return mod.interplus[ii] <= mod.aux3[ii] + mod.aux4[ii]
+
+
+def __rule_lock_2_3(mod, ii):
+    return -mod.intercapplus + mod.bigm*mod.peakplus[ii] <= mod.aux3[ii]
+
+
+def __rule_lock_2_4(mod, ii):
+    return mod.intercapplus - mod.bigm*mod.peakplus[ii] <= mod.aux4[ii]
+
+
+# Lock 3
+def __rule_lock_3_1(mod, ii):
+    return (mod.interplus[ii] <= mod.intercapplus +
+            mod.bigm*mod.baseminus[ii] + mod.aux5[ii] + mod.aux6[ii])
+
+
+def __rule_lock_3_2(mod, ii):
+    return mod.interplus[ii] <= mod.aux5[ii] + mod.aux6[ii]
+
+
+def __rule_lock_3_3(mod, ii):
+    return -mod.intercapplus - mod.bigm*mod.baseminus[ii] <= mod.aux5[ii]
+
+
+def __rule_lock_3_4(mod, ii):
+    return mod.intercapplus + mod.bigm*mod.baseminus[ii] <= mod.aux6[ii]
+
+
+# Lock 4
+def __rule_lock_4_1(mod, ii):
+    return (mod.intercapminus - mod.bigm*mod.peakminus[ii] - mod.aux7[ii] -
+            mod.aux8[ii] <= mod.interminus[ii])
+
+
+def __rule_lock_4_2(mod, ii):
+    return -mod.aux7[ii] - mod.aux8[ii] <= mod.interminus[ii]
+
+
+def __rule_lock_4_3(mod, ii):
+    return -mod.intercapminus + mod.bigm*mod.peakminus[ii] <= mod.aux7[ii]
+
+
+def __rule_lock_4_4(mod, ii):
+    return mod.intercapminus - mod.bigm*mod.peakminus[ii] <= mod.aux8[ii]
+
+
+# ### main
+def _lock_base_peak_inter(model, penaltyfactor=1e-3, bigm=1e3):
+    # Introduce auxiliary variables
+    model.aux1 = pe.Var(model.ind, bounds=(0, None))
+    model.aux2 = pe.Var(model.ind, bounds=(0, None))
+    model.aux3 = pe.Var(model.ind, bounds=(0, None))
+    model.aux4 = pe.Var(model.ind, bounds=(0, None))
+    model.aux5 = pe.Var(model.ind, bounds=(0, None))
+    model.aux6 = pe.Var(model.ind, bounds=(0, None))
+    model.aux7 = pe.Var(model.ind, bounds=(0, None))
+    model.aux8 = pe.Var(model.ind, bounds=(0, None))
+
+    model.bigm = bigm
+
+    # penalize aux variables
+    model.objexpr += sum(model.aux1[ii] + model.aux2[ii] + model.aux3[ii] +
+                         model.aux4[ii] + model.aux5[ii] + model.aux6[ii] +
+                         model.aux7[ii] + model.aux8[ii]
+                         for ii in model.ind)*penaltyfactor
+
+    # Lock1: min(PI- + Mpb+, 0) <= pI- | If base+ pos, then inter- must be zero
+    model.con_lock_1_1 = model.Constraint(model.ind, rule=__rule_lock_1_1)
+    model.con_lock_1_2 = model.Constraint(model.ind, rule=__rule_lock_1_2)
+    model.con_lock_1_3 = model.Constraint(model.ind, rule=__rule_lock_1_3)
+    model.con_lock_1_4 = model.Constraint(model.ind, rule=__rule_lock_1_4)
+
+    # Lock2: pI+ <= max(0, PI+ - Mpp+) | If peak+ pos, then inter+ must be zero
+    model.con_lock_2_1 = model.Constraint(model.ind, rule=__rule_lock_2_1)
+    model.con_lock_2_2 = model.Constraint(model.ind, rule=__rule_lock_2_2)
+    model.con_lock_2_3 = model.Constraint(model.ind, rule=__rule_lock_2_3)
+    model.con_lock_2_4 = model.Constraint(model.ind, rule=__rule_lock_2_4)
+
+    # Lock3: pI+ <= max(0, PI+ + Mpb-) | If base- neg, then inter+ must be zero
+    model.con_lock_3_1 = model.Constraint(model.ind, rule=__rule_lock_3_1)
+    model.con_lock_3_2 = model.Constraint(model.ind, rule=__rule_lock_3_2)
+    model.con_lock_3_3 = model.Constraint(model.ind, rule=__rule_lock_3_3)
+    model.con_lock_3_4 = model.Constraint(model.ind, rule=__rule_lock_3_4)
+
+    # Lock4: min(PI- - Mpp-, 0) <= pI- | If peak- neg, then inter- must be zero
+    model.con_lock_4_1 = model.Constraint(model.ind, rule=__rule_lock_4_1)
+    model.con_lock_4_2 = model.Constraint(model.ind, rule=__rule_lock_4_2)
+    model.con_lock_4_3 = model.Constraint(model.ind, rule=__rule_lock_4_3)
+    model.con_lock_4_4 = model.Constraint(model.ind, rule=__rule_lock_4_4)
 
 
 # _add_target() ###############################################################
