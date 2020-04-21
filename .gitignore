@@ -1,4 +1,5 @@
 .idea/
+*.idea.bak/
 __pycache__/
 results.yml
 stahlwerk*
@@ -6,10 +7,14 @@ stahlwerk*
 *.opt
 *.pyc
 /dist/
+/dist.bak/
 *egg*
 build/
+build.bak/
 venv/
+venv.bak/
 *.lp
 *.gurobi.txt
 *.sgl
 *.sig
+doku.ignore
