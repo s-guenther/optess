@@ -6,6 +6,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 import pickle
 from random import randint
+from typing import Union, Optional
 
 from .utility import make_empty_axes
 
@@ -36,11 +37,11 @@ class Signal:
 
     @property
     def times(self):
-        return self._times
+        return np.copy(self._times)
 
     @property
     def vals(self):
-        return self._vals
+        return np.copy(self._vals)
 
     @property
     def dtimes(self):
@@ -51,6 +52,21 @@ class Signal:
     def amv(self):
         """Average mean value"""
         return 1/self.times[-1]*sum(self.vals*self.dtimes)
+
+    @property
+    def max(self):
+        """Maximum Value"""
+        return max(self.vals)
+
+    @property
+    def min(self):
+        """Minimum Value"""
+        return min(self.vals)
+
+    @property
+    def maxabs(self):
+        """Maximum of absolute values"""
+        return max(abs(self.vals))
 
     @property
     def arv(self):
@@ -70,7 +86,7 @@ class Signal:
     @property
     def crest(self):
         """Crest Factor"""
-        return max(self.vals)/self.rms
+        return max(abs(self.vals))/self.rms
 
     def concat(self, other, plausibility_check=True):
         if plausibility_check:
@@ -130,6 +146,34 @@ class Signal:
             times, vals = self[start:end]
             signals.append(Signal(times-offset, vals))
         return signals
+
+    # noinspection PyTypeChecker
+    def get_section(self, start: Union[int, slice],
+                    stop: Optional[int] = None, new_time_base=True):
+        """Returns a section of the original signal. start and stop build a
+        slice object for the data. Alternatively, you can input an slice
+        object for start direcly. If new_time_base is true, the time data of
+        the signal is shifted in a way that the new signal starts at zero
+        again."""
+        if stop is None and not isinstance(start, slice):
+            raise ValueError('start must be a slice object if end is not '
+                             'provided')
+        elif stop is not None and isinstance(start, slice):
+            raise ValueError('either provide one slice object or two '
+                             'integers for start and end')
+        elif isinstance(start, slice):
+            ss = start
+        else:
+            ss = slice(start, stop, 1)
+
+        times, vals = self[ss]
+        if new_time_base and ss.start - ss.step >= 0:
+            times -= self.times[ss.start-ss.step]
+        return Signal(times, vals)
+
+    def copy(self):
+        """Return a copy of the object."""
+        return Signal(self.times, self.vals)
 
     def equals(self, other):
         """Returns True if two signals are equal, and False if not.
