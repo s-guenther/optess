@@ -25,7 +25,7 @@ SINGLE_SH = '''
 cd ${WORKDIR}
 echo $(date) Starting single calculation >> ${NAME}.log
 module load ${MODULES}
-python3 tmp_${NAME}/single.py ${NAME}.hyb >> ${NAME}.log
+python3 tmp_${NAME}/single.py ${NAME}.hyb ${SINGLEENERGY} >> ${NAME}.log
 echo $(date) Finished single calculation >> ${NAME}.log
 '''[1:-1]
 
@@ -37,17 +37,16 @@ import optess as oe
 import sys
 
 
-def single(filename):
-    """Loads the HybridDia Object specified in filename, performs single
-    calculation, saves it."""
+def single(filename, singleenergy):
     hyb = oe.HybridDia.load(filename)
-    hyb.calculate_single()
+    hyb.calculate_single(singleenergy)
     hyb.save()
 
 
 if __name__ == '__main__':
     FILENAME = sys.argv[1]
-    single(FILENAME)
+    SINGLEENERGY = float(sys.argv[2])
+    single(FILENAME, SINGLEENERGY)
 '''[1:-1]
 
 
@@ -303,8 +302,8 @@ class Torque:
 
         self.initialize(hyb)
 
-    def qsub(self, cuts, curves):
-        self.singleid = self.qsub_single()
+    def qsub(self, cuts, curves, singleenergy=None):
+        self.singleid = self.qsub_single(singleenergy)
         for cut in cuts:
             self.interids.append(self.qsub_point_at_curve(cut, 'inter'))
         for cut in cuts:
@@ -316,11 +315,12 @@ class Torque:
         self.utilityids.append(self.qsub_merge_area())
         return True
 
-    def qsub_single(self):
+    def qsub_single(self, singleenergy):
         paras = dict()
         paras['MODULES'] = self.modules
         paras['NAME'] = self.name
         paras['WORKDIR'] = self.workdir
+        paras['SINGLEENERGY'] = str(singleenergy)
 
         time, cores, ram = self.get_resources(self.npoints, 'single')
         arch = self.architecture

@@ -106,7 +106,7 @@ class HybridDia:
         return self.hybridpotential - rpot
 
     # --- Compute Function to calculate complete diagram ---
-    def compute(self, cuts=CUTS, curves=CURVES):
+    def compute(self, cuts=CUTS, curves=CURVES, singleenergy=None):
         """This function computes: (1) The single optimizsation to gain the
         upper right point of the hybridisation diagram; (2) The
         hybridisation curve at specified cuts; (3) Points within the area to
@@ -120,9 +120,9 @@ class HybridDia:
         computation routines will differ in speed. This function deferres
         execution to 'self.compute_serial'. See help of specialized
         functions for more information."""
-        self.compute_serial(cuts=cuts, curves=curves)
+        self.compute_serial(cuts=cuts, curves=curves, singleenergy=singleenergy)
 
-    def compute_serial(self, cuts=CUTS, curves=CURVES):
+    def compute_serial(self, cuts=CUTS, curves=CURVES, singleenergy=None):
         """See 'self.compute' for more information. Each optimisation is
         done one after another. This will be the slowest procedure if enough
         hardware ressources are available. See 'module.print_resources()' to
@@ -131,7 +131,7 @@ class HybridDia:
         print('Calculate Single...', flush=True)
         time.sleep(0.01)
         for _ in tqdm([None]):
-            self.calculate_single()
+            self.calculate_single(singleenergy)
         self._add_extreme_points()
 
         time.sleep(0.01)
@@ -158,7 +158,7 @@ class HybridDia:
         time.sleep(0.01)
         print('... all done', flush=True)
 
-    def compute_parallel(self, cuts=CUTS, curves=CURVES, workers=4):
+    def compute_parallel(self, cuts=CUTS, curves=CURVES, singleenergy=None, workers=4):
         """See 'self.compute' for more information. Optimisations are
         computed in parallel with a pool of 'workers'. See
         'module.print_ressources()' to determine the right amount of
@@ -169,7 +169,7 @@ class HybridDia:
         print('Calculate Single...', flush=True)
         time.sleep(0.01)
         for _ in tqdm([None]):
-            self.calculate_single()
+            self.calculate_single(singleenergy)
         self._add_extreme_points()
 
         # --- Calculate Hybrid Curve w/ inter-storage power flow ---
@@ -218,7 +218,7 @@ class HybridDia:
         time.sleep(0.01)
         print('... all done', flush=True)
 
-    def compute_torque(self, cuts=CUTS, curves=CURVES,
+    def compute_torque(self, cuts=CUTS, curves=CURVES, singleenergy=None,
                        setupfile=None, wt=1.0, mem=1.0, returninfo=True):
         """See 'self.compute' for more information. The single optimisations
         are delegated to a torque batch system at a cluster, assuming that the
@@ -228,7 +228,7 @@ class HybridDia:
 
         self.torque = Torque(self, setupfile, wt, mem)
 
-        done = self.torque.qsub(cuts, curves)
+        done = self.torque.qsub(cuts, curves, singleenergy)
 
         if done and returninfo:
             msg = 'All jobs have been submitted to the scheduling system. ' \
@@ -253,11 +253,15 @@ class HybridDia:
             print(' '*4, self.torque.utilityids)
 
     # --- unary calculation function, calculates only a single point ---
-    def calculate_single(self, add_to_dia=True):
+    def calculate_single(self, singleenergy=None, add_to_dia=True):
         single = OptimizeSingleESS(self.signal, self.storage,
                                    self.objective, self.solver)
         single.solve_pyomo_model()
-        self.energycapacity = single.results.energycapacity
+        if singleenergy is None:
+            self.energycapacity = single.results.energycapacity
+        else:
+            self.energycapacity = singleenergy
+
         results = ReducedSingleResults(single, savepath=self.name,
                                        save_to_disc=self._save_opt_results)
         if add_to_dia:
