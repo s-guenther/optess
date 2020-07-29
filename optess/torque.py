@@ -45,7 +45,7 @@ def single(filename, singleenergy):
 
 if __name__ == '__main__':
     FILENAME = sys.argv[1]
-    SINGLEENERGY = float(sys.argv[2])
+    SINGLEENERGY = None if sys.argv[2] is 'None' else float(sys.argv[2])
     single(FILENAME, SINGLEENERGY)
 '''[1:-1]
 
