@@ -264,6 +264,9 @@ class HybridDia:
 
         results = ReducedSingleResults(single, savepath=self.name,
                                        save_to_disc=self._save_opt_results)
+        from collections import namedtuple
+        _Dim = namedtuple('_Dim', 'power energy')
+        results.dim = _Dim(self.powercapacity, self.energycapacity)
         if add_to_dia:
             self.single = results
         return results
@@ -374,7 +377,7 @@ class HybridDia:
         pass
 
     def pplot(self):
-        if not self.inter or not self.nointer or not self.area:
+        if not self.inter or not self.nointer:  # or not self.area:
             raise DataNotComputedError
 
         # TODO remove duplicate code, refactor
@@ -415,13 +418,13 @@ class HybridDia:
             xvec.append(x)
             yvec.append(y)
             cycvec.append(cycles[0])
-        for (y, x), results in self.area.items():
-            cbase, cpeak = (results.basecycles, results.peakcycles)
-            # ax.text(x*self.energycapacity, y*self.powercapacity,
-            #         '{:.2f}'.format(cpeak))
-            xvec.append(x*self.energycapacity)
-            yvec.append(y*self.powercapacity)
-            cycvec.append(cbase)
+        # for (y, x), results in self.area.items():
+        #     cbase, cpeak = (results.basecycles, results.peakcycles)
+        #     # ax.text(x*self.energycapacity, y*self.powercapacity,
+        #     #         '{:.2f}'.format(cpeak))
+        #     xvec.append(x*self.energycapacity)
+        #     yvec.append(y*self.powercapacity)
+        #     cycvec.append(cbase)
         cycsingle = self.single.cycles
         xvec.append(self.energycapacity)
         yvec.append(self.powercapacity)
