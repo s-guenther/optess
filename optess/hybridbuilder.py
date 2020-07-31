@@ -484,7 +484,7 @@ def _energy_lower_max_constraint(model):
 def _energies_add_to_single_energy_constraint(model):
     model.con_base_plus_peak_is_single = \
         pe.Constraint(expr=(model.baseenergycapacity +
-                            model.peakenergycapacity <=
+                            model.peakenergycapacity ==
                             model.singleenergycapacity))
 
 
