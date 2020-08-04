@@ -17,7 +17,8 @@ from .signal import Signal
 from .storage import Storage
 from .objective import Objective, Solver
 from .results import ReducedHybridResults, ReducedSingleResults, \
-                     single_to_base_results, single_to_peak_results
+                     single_to_base_results, single_to_peak_results, \
+                     _Dim
 from .torque import Torque
 
 
@@ -264,8 +265,6 @@ class HybridDia:
 
         results = ReducedSingleResults(single, savepath=self.name,
                                        save_to_disc=self._save_opt_results)
-        from collections import namedtuple
-        _Dim = namedtuple('_Dim', 'power energy')
         results.dim = _Dim(self.powercapacity, self.energycapacity)
         if add_to_dia:
             self.single = results
